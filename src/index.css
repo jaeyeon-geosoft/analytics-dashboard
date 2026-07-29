@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+
+/* 디자인 토큰: bg-bg, text-fg, border-border 같은 유틸리티로 사용됩니다. */
+@theme {
+  --color-bg: #ffffff;
+  --color-surface: #f8f9fa;
+  --color-border: #e5e4e7;
+  --color-fg: #18181b;
+  --color-muted: #6b7280;
+  --color-accent: #3b82f6;
+
+  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+}
+
+/* 다크모드: 토큰 값만 교체하면 모든 유틸리티가 따라옵니다. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #16171d;
+    --color-surface: #1f2028;
+    --color-border: #2e303a;
+    --color-fg: #f3f4f6;
+    --color-muted: #9ca3af;
+    --color-accent: #60a5fa;
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
