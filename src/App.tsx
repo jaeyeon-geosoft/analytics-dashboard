@@ -6,6 +6,7 @@ import { SettingsSidebar, type Mapping, type MappingKey } from "@/components/set
 import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
 import { validateFile } from "@/lib/file-constraints"
+import { parseFile } from "@/lib/parse-file"
 
 function App() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
@@ -13,15 +14,44 @@ function App() {
   // 슬롯 key로 잡아두면 차트 종류를 바꿔도 같은 역할의 선택이 살아남는다.
   const [mapping, setMapping] = useState<Mapping>({})
 
-  function handleFile(file: File) {
+  async function handleFile(file: File) {
     const problem = validateFile(file)
     if (problem) {
       setState({ status: "error", fileName: file.name, message: problem })
       return
     }
+
     setMapping({}) // 파일이 바뀌면 컬럼도 바뀐다
-    // 파서가 붙는 자리. 여기서 loading으로 바꾸고, 파싱이 끝나면 컬럼과 함께 ready로 넘긴다.
-    setState({ status: "ready", dataset: { name: file.name, size: file.size } })
+    setState({ status: "loading", fileName: file.name })
+
+    try {
+      const data = await parseFile(file)
+
+      if (data.columns.length === 0) {
+        setState({
+          status: "error",
+          fileName: file.name,
+          message: "컬럼을 찾지 못했습니다. 첫 줄에 헤더가 있는지 확인해 주세요.",
+        })
+        return
+      }
+      if (data.rows.length === 0) {
+        setState({
+          status: "error",
+          fileName: file.name,
+          message: "헤더만 있고 데이터 행이 없습니다.",
+        })
+        return
+      }
+
+      setState({ status: "ready", dataset: { name: file.name, size: file.size }, data })
+    } catch (error) {
+      setState({
+        status: "error",
+        fileName: file.name,
+        message: error instanceof Error ? error.message : "파일을 읽지 못했습니다.",
+      })
+    }
   }
 
   return (
@@ -31,7 +61,7 @@ function App() {
         <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
           <SettingsSidebar
             dataset={state.status === "ready" ? state.dataset : null}
-            columns={[]}
+            data={state.status === "ready" ? state.data : null}
             chartType={chartType}
             onChartTypeChange={setChartType}
             mapping={mapping}

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select"
 import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
 import { ACCEPT_ATTR, formatBytes } from "@/lib/file-constraints"
+import type { ParsedFile } from "@/lib/parse-file"
 
 export type Dataset = { name: string; size: number }
 
@@ -141,7 +142,7 @@ function MappingSelect({
 
 export function SettingsSidebar({
   dataset,
-  columns,
+  data,
   chartType,
   onChartTypeChange,
   mapping,
@@ -149,13 +150,15 @@ export function SettingsSidebar({
   onFile,
 }: {
   dataset: Dataset | null
-  columns: string[]
+  data: ParsedFile | null
   chartType: ChartType
   onChartTypeChange: (value: ChartType) => void
   mapping: Mapping
   onMappingChange: (key: MappingKey, column?: string) => void
   onFile: (file: File) => void
 }) {
+  const columns = data?.columns ?? []
+
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-border lg:h-full lg:w-72 lg:border-r lg:border-b-0">
       <ScrollArea className="flex-1">
@@ -171,6 +174,8 @@ export function SettingsSidebar({
                   </p>
                   <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                     {formatBytes(dataset.size)}
+                    {data && ` · ${data.rows.length.toLocaleString()}행`}
+                    {data && data.encoding !== "utf-8" && ` · ${data.encoding.toUpperCase()}`}
                   </p>
                 </div>
                 <Button asChild variant="ghost" size="icon-xs" aria-label="다른 파일로 교체">
@@ -218,11 +223,6 @@ export function SettingsSidebar({
                 />
               ))}
             </div>
-            {dataset && columns.length === 0 && (
-              <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                컬럼을 읽으면 여기에 채워집니다.
-              </p>
-            )}
           </section>
         </div>
       </ScrollArea>

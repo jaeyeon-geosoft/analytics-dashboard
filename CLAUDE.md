@@ -34,9 +34,9 @@
 - **Tailwind CSS 4** — `@tailwindcss/vite` 플러그인 방식, `tailwind.config` 파일 없음. 테마는 전부 `src/index.css`의 CSS 변수.
 - **shadcn/ui** — style `radix-rhea`, baseColor `neutral`, 아이콘 `lucide-react`
 - **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 아직 미설치이며, 필요할 때 `npx shadcn@latest add chart`로 추가한다 (recharts가 함께 설치됨).
+- **CSV/TSV 파서: papaparse** — `src/lib/parse-file.ts`에서만 쓴다. 순수 파서라 네트워크 호출 없음.
 
 아직 도입 안 된 것 (필요해질 때 추가):
-- CSV/TSV 파서 (papaparse 등)
 - Excel `.xlsx` 파서 (SheetJS 등) — 시트 선택 UI가 함께 필요
 - 상태관리 라이브러리 — 우선 React 내장(`useState`/`useReducer`/Context)으로 버티고, 정말 부족할 때만 논의
 
@@ -102,7 +102,9 @@ npm run preview   # 빌드 결과 미리보기
 
 - 파일 크기와 행 수에 상한을 두고, 넘으면 사용자에게 알릴 것. 브라우저 메모리로 처리하는 구조라 수백 MB 파일은 탭을 죽인다.
 - 상한과 허용 확장자는 `src/lib/file-constraints.ts` 한 곳에 있다 (현재 50MB, `.csv`/`.tsv`/`.xlsx`/`.xls`). 검증 문구도 여기서 나오니 여러 곳에 흩뿌리지 말 것. 행 수 상한은 파서가 붙을 때 여기에 추가한다.
-- 큰 파일 파싱은 UI를 멈추지 않게 할 것 (스트리밍 파싱 또는 Web Worker).
+- 큰 파일 파싱은 UI를 멈추지 않게 할 것 (스트리밍 파싱 또는 Web Worker). **단, papaparse의 청크 스트리밍(`chunk` 콜백)은 쓰지 말 것** — 청크마다 따로 디코딩해서 10MB 경계에 걸친 멀티바이트 문자가 조용히 깨진다(37MB 한글 파일에서 재현됨). 지금은 전체를 한 번에 디코딩한 뒤 파싱하고, 상한 50MB에서 200~300ms 블로킹을 감수한다. 더 커져야 하면 Worker로 옮길 것.
+- **인코딩을 UTF-8로 단정하지 말 것.** 한국 Excel의 "CSV(쉼표로 분리)"는 CP949로 저장된다. `parse-file.ts`가 앞부분을 UTF-8로 디코딩해보고 치환 문자가 나오면 EUC-KR로 다시 읽는다. 감지 결과는 데이터셋 카드에 노출해서 사용자가 틀린 걸 알아챌 수 있게 한다.
+- **papaparse `dynamicTyping`은 끈 채로 둘 것.** 켜면 `"007"`을 조용히 `7`로 바꿔서 타입 추론이 무의미해진다.
 - 컬럼 타입(숫자/날짜/범주) 추론은 실패할 수 있다. 추론 결과를 사용자가 고칠 수 있게 만들 것 — 조용히 잘못 추론하는 것이 최악이다.
 
 ---

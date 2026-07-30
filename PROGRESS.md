@@ -4,10 +4,10 @@
 
 ## 지금 단계
 
-**UI 셸 완료, 데이터 로직 미착수.**
+**UI 셸 + CSV/TSV 파싱까지 완료.** 다음은 컬럼 타입 추론.
 
-화면(헤더·사이드바·캔버스·각 상태)은 다 만들어져 있고, 파일을 열면 확장자와 크기까지
-검증한다. 그 다음 — 파싱, 컬럼 타입 추론, 차트 렌더링 — 은 아직 없다.
+파일을 열면 인코딩을 감지해 파싱하고, 실제 컬럼명이 매핑 Select에 채워진다.
+아직 없는 것: 컬럼 타입 추론(숫자/날짜/범주), 슬롯별 후보 필터링, 차트 렌더링.
 
 UI 셸과 데이터 로직을 일부러 분리해서 진행 중이다. 셸을 먼저 고정해두면 파서를 붙일 때
 화면 구조를 다시 흔들 일이 없다.
@@ -20,7 +20,7 @@ UI 셸과 데이터 로직을 일부러 분리해서 진행 중이다. 셸을 �
 ├─ SettingsSidebar (w-72) ─┬─ main ────────────────┤
 │  데이터셋                 │  ChartCanvas         │
 │  차트 종류 (7종 피커)      │   empty   드롭존      │
-│  매핑 (종류별로 다름)      │   loading 스켈레톤+진행률│
+│  매핑 (종류별로 다름)      │   loading 스켈레톤     │
 │                          │   error   Alert+드롭존 │
 │  ─ 로컬 전용 계약 3줄 ─    │   ready   플롯 프레임  │
 └──────────────────────────┴───────────────────────┘
@@ -37,27 +37,45 @@ UI 셸과 데이터 로직을 일부러 분리해서 진행 중이다. 셸을 �
 | `src/components/chart-canvas.tsx` | 캔버스 4개 상태 |
 | `src/components/file-dropzone.tsx` | 드래그&드롭 + 파일 선택 |
 | `src/components/theme-toggle.tsx` | 라이트/다크 (`localStorage`, 데이터 아님) |
-| `src/lib/file-constraints.ts` | 확장자 목록, 크기 상한, `validateFile()` |
+| `src/lib/file-constraints.ts` | 확장자 목록, 크기 상한(50MB), `validateFile()` |
+| `src/lib/parse-file.ts` | 인코딩 감지 + papaparse 파싱, 행 상한(10만) |
 
-## 파서가 붙을 자리
+## 파싱
 
-`src/App.tsx`의 `handleFile()`. 지금은 `validateFile()`을 통과하면 바로 `ready`로 넘어간다.
-파서가 붙으면 이렇게 된다:
+`src/App.tsx`의 `handleFile()`이 흐름을 잡는다:
 
 ```
-validateFile() 통과
-  → setState({ status: "loading", fileName, progress })   ← 아직 호출되는 곳이 없음
-  → 파싱 완료 후 setState({ status: "ready", dataset, columns })
-  → 파싱 실패 시 setState({ status: "error", ... })
+validateFile()  확장자·크기 (파싱 없이)
+  → loading
+  → parseFile()  전체 디코딩 → papaparse
+  → 컬럼 0개 / 행 0개면 error
+  → ready { dataset, data }
 ```
 
-`SettingsSidebar`의 `columns` prop이 `[]`로 고정되어 있어 매핑 Select가 항상 비활성이다.
-파싱 결과를 여기에 넘기면 살아난다.
+`ParsedFile`은 `columns` / `rows` / `encoding` / `truncated` / `errorCount`를 담는다.
+`SettingsSidebar`는 `data.columns`로 매핑 Select를 채우고, 캔버스는 행·컬럼 수와 경고를
+헤더에 띄운다.
+
+### 왜 청크 스트리밍을 안 쓰는가
+
+papaparse의 `chunk` 콜백은 청크마다 따로 디코딩해서 **10MB 경계에 걸친 멀티바이트 문자가
+조용히 깨진다.** 37MB 한글 파일에서 2건 재현했다. 전체를 한 번에 디코딩하면 0건이다.
+
+측정치(37MB, 6만 행): 디코딩 84ms + 파싱 102ms. 상한 50MB에서 200~300ms 메인스레드
+블로킹을 감수한다. Worker로 옮겨도 결과 전달에 50ms가 들어서 실이익이 작다 — 더 큰
+파일을 다뤄야 할 때 다시 볼 것.
+
+### 인코딩
+
+앞 64KB를 UTF-8로 디코딩해보고 치환 문자가 나오면 EUC-KR로 다시 읽는다. 한국 Excel의
+"CSV(쉼표로 분리)"가 CP949로 저장되기 때문이다. 감지 결과는 데이터셋 카드에 `EUC-KR`로
+표시해서 감지가 틀렸을 때 사용자가 알아챌 수 있게 했다.
 
 ## 미결정 사항
 
-- **CSV/TSV 파서** (papaparse 등) — 의존성 추가 전 확인 필요
-- **Excel 파서** (SheetJS 등) — 시트 선택 UI가 함께 필요
+- **Excel 파서** (SheetJS 등) — 시트 선택 UI가 함께 필요. 드롭존은 이미 `.xlsx`를 받고
+  있어서 지금 열면 파싱에서 깨진다.
+- **헤더가 1행이 아닌 파일** — 제목 줄이 위에 붙은 리포트성 CSV. "헤더 행 지정" UI 필요.
 - **상태관리** — 아직 `useState`로 충분. 매핑 선택과 파싱 결과가 들어오면 재검토
 
 ## 차트 종류별 매핑 슬롯

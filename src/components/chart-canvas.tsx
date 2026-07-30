@@ -1,16 +1,16 @@
 import { AlertTriangle } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FileDropzone } from "@/components/file-dropzone"
 import type { Dataset } from "@/components/settings-sidebar"
+import { MAX_ROWS, type ParsedFile } from "@/lib/parse-file"
 
 export type CanvasState =
   | { status: "empty" }
-  | { status: "loading"; fileName: string; progress?: number }
+  | { status: "loading"; fileName: string }
   | { status: "error"; fileName?: string; message: string }
-  | { status: "ready"; dataset: Dataset }
+  | { status: "ready"; dataset: Dataset; data: ParsedFile }
 
 function CanvasFrame({ title, children }: { title?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -48,7 +48,6 @@ export function ChartCanvas({
           </>
         }
       >
-        <Progress value={state.progress} className="mb-6 h-1" />
         <div className="flex min-h-0 flex-1 items-center">
           <div className="flex h-44 w-full items-end gap-3 border-b border-l border-border">
             {[68, 42, 88, 55, 74, 36, 61].map((height, index) => (
@@ -81,21 +80,33 @@ export function ChartCanvas({
     )
   }
 
+  const { data } = state
+  const caveats = [
+    data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
+    data.errorCount > 0 && `${data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
+  ].filter(Boolean)
+
   return (
     <CanvasFrame
       title={
         <>
           <p className="font-mono text-sm">{state.dataset.name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            왼쪽에서 차트 종류와 축을 고르세요.
+          <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+            {data.rows.length.toLocaleString()}행 · {data.columns.length}개 컬럼
           </p>
+          {caveats.length > 0 && (
+            <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              <span>{caveats.join(" ")}</span>
+            </p>
+          )}
         </>
       }
     >
-      {/* 플롯 영역. 축선만 세워두고, 마크는 데이터가 연결되면 여기에 그린다. */}
+      {/* 플롯 영역. 축선만 세워두고, 마크는 매핑이 연결되면 여기에 그린다. */}
       <div className="relative min-h-64 flex-1 border-b border-l border-border">
         <p className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-          축을 고르면 차트가 그려집니다.
+          왼쪽에서 차트 종류와 컬럼을 고르세요.
         </p>
       </div>
     </CanvasFrame>
