@@ -192,7 +192,11 @@ function ReadyCanvas({
         </div>
       }
     >
-      <div className="min-h-64 flex-1">
+      {/*
+        relative + 자식 absolute로 채운다. flex-1은 높이가 auto라서 자식의 h-full(백분율)이
+        해석되지 못하고 콘텐츠 높이로 무너진다 — Recharts가 47px짜리 플롯을 그렸다.
+      */}
+      <div className="relative min-h-64 flex-1">
         {!drawable ? (
           <p className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
             {missing.length > 0

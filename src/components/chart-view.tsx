@@ -93,7 +93,7 @@ function AxisFrame({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="absolute inset-0 flex flex-col">
       <div className="flex min-h-0 flex-1 gap-1">
         <div
           className="shrink-0 self-center text-[11px] text-muted-foreground [writing-mode:vertical-rl] rotate-180"
@@ -101,7 +101,7 @@ function AxisFrame({
         >
           {truncate(yLabel, 24)}
         </div>
-        <div className="min-h-0 min-w-0 flex-1">{children}</div>
+        <div className="relative min-h-0 min-w-0 flex-1">{children}</div>
       </div>
       <p
         className="mt-1 shrink-0 truncate text-center text-[11px] text-muted-foreground"
@@ -157,7 +157,7 @@ function CartesianView({
     const Chart = chartType === "line" ? LineChart : AreaChart
     return (
       <AxisFrame xLabel={frame.xLabel} yLabel={frame.yLabel}>
-        <ChartContainer config={config} className="aspect-auto h-full w-full">
+        <ChartContainer config={config} className="absolute inset-0 aspect-auto">
           <Chart
             data={frame.rows}
             margin={{ top: 8, right: 16, bottom: 4, left: 4 }}
@@ -222,7 +222,7 @@ function CartesianView({
       xLabel={horizontal ? frame.yLabel : frame.xLabel}
       yLabel={horizontal ? frame.xLabel : frame.yLabel}
     >
-      <ChartContainer config={config} className="aspect-auto h-full w-full">
+      <ChartContainer config={config} className="absolute inset-0 aspect-auto">
         <BarChart
           data={frame.rows}
           layout={horizontal ? "vertical" : "horizontal"}
@@ -320,7 +320,7 @@ function PieView({ frame }: { frame: ChartFrame }) {
       // Recharts는 조각 라벨에 조각 색을 물려준다. 라벨은 텍스트 색을 입어야 해서
       // (라이트 모드에서 노랑·아쿠아는 읽히지 않는다) CSS로 덮어쓴다 —
       // CSS fill이 SVG 표현 속성보다 우선한다.
-      className="aspect-auto h-full w-full [&_.recharts-pie-label-text]:fill-muted-foreground [&_.recharts-pie-label-text]:text-[11px]"
+      className="absolute inset-0 aspect-auto [&_.recharts-pie-label-text]:fill-muted-foreground [&_.recharts-pie-label-text]:text-[11px]"
     >
       <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
         <ChartTooltip
@@ -360,7 +360,7 @@ function ScatterView({ frame }: { frame: ScatterFrame }) {
 
   return (
     <AxisFrame xLabel={frame.xLabel} yLabel={frame.yLabel}>
-      <ChartContainer config={config} className="aspect-auto h-full w-full">
+      <ChartContainer config={config} className="absolute inset-0 aspect-auto">
         <ScatterChart margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
           <CartesianGrid stroke={GRID} strokeWidth={1} />
           <XAxis

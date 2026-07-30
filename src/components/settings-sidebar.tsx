@@ -151,7 +151,7 @@ export function SettingsSidebar({
   onFile: (file: File) => void
 }) {
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-border lg:h-full lg:w-72 lg:border-r lg:border-b-0">
+    <aside className="flex w-full shrink-0 flex-col border-t border-border lg:h-full lg:w-72 lg:border-t-0 lg:border-r">
       {/*
         min-h-0가 없으면 flex 자식이 부모를 넘쳐서 사이드바 대신 페이지가 스크롤된다.
 
@@ -160,7 +160,11 @@ export function SettingsSidebar({
         잘린다. 인라인 스타일을 이겨야 해서 `!`가 필요하다.
       */}
       <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:block!">
-        <div className="space-y-6 p-4">
+        {/*
+          쌓였을 때는 폭이 사이드바보다 훨씬 넓어진다. 그대로 두면 라벨과 Select가
+          양 끝으로 벌어져서 짝이 안 보인다. 읽을 만한 폭으로 묶고 가운데 정렬한다.
+        */}
+        <div className="mx-auto max-w-lg space-y-6 p-4 lg:mx-0 lg:max-w-none">
           <section>
             <SectionLabel>데이터셋</SectionLabel>
             {dataset ? (

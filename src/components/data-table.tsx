@@ -22,7 +22,7 @@ export function DataTable({
   if (!table) return null
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="absolute inset-0 overflow-auto">
       <table className="w-full border-collapse text-xs">
         <thead className="sticky top-0 bg-card">
           <tr className="border-b border-border">

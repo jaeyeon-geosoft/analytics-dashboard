@@ -75,7 +75,11 @@ function App() {
     <TooltipProvider delayDuration={300}>
       <div className="flex min-h-dvh flex-col lg:h-dvh">
         <AppHeader onFile={handleFile} />
-        <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
+        {/*
+          세로로 쌓일 때는 캔버스가 먼저다. 설정이 위에 있으면 스크롤을 한참 내려야
+          차트가 나온다 — 파일을 열기 전에는 드롭존이 먼저 보여서 그것도 맞다.
+        */}
+        <div className="flex flex-1 flex-col-reverse lg:min-h-0 lg:flex-row">
           <SettingsSidebar
             dataset={state.status === "ready" ? state.dataset : null}
             data={state.status === "ready" ? state.data : null}
