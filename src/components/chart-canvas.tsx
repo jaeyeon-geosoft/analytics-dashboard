@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react"
-import { AlertTriangle } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { AlertTriangle, Loader2 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -14,6 +14,8 @@ import {
   buildChartFrame,
   buildScatterFrame,
   type Aggregation,
+  type ChartFrame,
+  type ScatterFrame,
 } from "@/lib/aggregate"
 import type { ColumnInfo } from "@/lib/infer-types"
 import { MAPPING_SLOTS, type Mapping } from "@/lib/mapping-slots"
@@ -126,19 +128,46 @@ function ReadyCanvas({
   columns: ColumnInfo[]
 }) {
   const [view, setView] = useState<"chart" | "table">("chart")
+  const frameRef = useRef(0)
   const { data } = state
 
-  const frame = useMemo(
-    () =>
-      chartType === "scatter"
-        ? null
-        : buildChartFrame(chartType, mapping, aggregation, columns, data.rows),
-    [chartType, mapping, aggregation, columns, data.rows]
-  )
-  const scatter = useMemo(
-    () => (chartType === "scatter" ? buildScatterFrame(mapping, data.rows) : null),
-    [chartType, mapping, data.rows]
-  )
+  /*
+    집계와 Recharts 렌더는 둘 다 동기라서, 범주가 만 개쯤 되면 그동안 화면이 통째로
+    멈춘다. 계산을 상태로 미뤄서 "그리는 중"이 먼저 찍히게 한다. rAF 한 번으로는 같은
+    프레임에 묶여 안 보이므로 두 번 양보한다.
+  */
+  const [built, setBuilt] = useState<{
+    frame: ChartFrame | null
+    scatter: ScatterFrame | null
+  } | null>(null)
+  const [busy, setBusy] = useState(true)
+
+  useEffect(() => {
+    setBusy(true)
+    let cancelled = false
+    const outer = requestAnimationFrame(() => {
+      const inner = requestAnimationFrame(() => {
+        if (cancelled) return
+        setBuilt({
+          frame:
+            chartType === "scatter"
+              ? null
+              : buildChartFrame(chartType, mapping, aggregation, columns, data.rows),
+          scatter: chartType === "scatter" ? buildScatterFrame(mapping, data.rows) : null,
+        })
+        setBusy(false)
+      })
+      frameRef.current = inner
+    })
+    frameRef.current = outer
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frameRef.current)
+    }
+  }, [chartType, mapping, aggregation, columns, data.rows])
+
+  const frame = built?.frame ?? null
+  const scatter = built?.scatter ?? null
 
   const missing = MAPPING_SLOTS[chartType]
     .filter((slot) => !slot.optional && !mapping[slot.key])
@@ -150,9 +179,9 @@ function ReadyCanvas({
     frame &&
       frame.folded > 0 &&
       `조각이 많아 나머지 ${frame.folded}개 범주는 "기타"로 묶었습니다.`,
-    // 범주를 자르지는 않지만, 많으면 사실상 못 읽으므로 그건 말해준다.
+    // 자르지 않고 전부 그리므로 화면 밖으로 넘어간다. 어디를 봐야 하는지 알려준다.
     frame && frame.folded === 0 && frame.rows.length > 40 &&
-      `범주가 ${frame.rows.length.toLocaleString()}개라 촘촘합니다. 표 보기로 값을 확인하세요.`,
+      `범주 ${frame.rows.length.toLocaleString()}개를 전부 그렸습니다. 가로로 밀어 보거나 표 보기를 쓰세요.`,
     scatter && scatter.omitted > 0 && `점 ${scatter.omitted.toLocaleString()}개는 그리지 않았습니다.`,
   ].filter(Boolean)
 
@@ -202,16 +231,29 @@ function ReadyCanvas({
         해석되지 못하고 콘텐츠 높이로 무너진다 — Recharts가 47px짜리 플롯을 그렸다.
       */}
       <div className="relative min-h-64 flex-1">
-        {!drawable ? (
-          <p className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-            {missing.length > 0
-              ? `${missing.join(", ")}을(를) 고르면 차트가 그려집니다.`
-              : "고른 컬럼으로 그릴 수 있는 값이 없습니다. 컬럼 타입을 확인해 주세요."}
-          </p>
-        ) : view === "chart" ? (
-          <ChartView chartType={chartType} frame={frame} scatter={scatter} />
-        ) : (
-          <DataTable frame={frame} scatter={scatter} />
+        {/* 계산 중에도 이전 차트를 남겨둔다. 비워버리면 화면이 튄다. */}
+        <div className={busy ? "pointer-events-none h-full opacity-40" : "h-full"}>
+          {!drawable ? (
+            !busy && (
+              <p className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                {missing.length > 0
+                  ? `${missing.join(", ")}을(를) 고르면 차트가 그려집니다.`
+                  : "고른 컬럼으로 그릴 수 있는 값이 없습니다. 컬럼 타입을 확인해 주세요."}
+              </p>
+            )
+          ) : view === "chart" ? (
+            <ChartView chartType={chartType} frame={frame} scatter={scatter} />
+          ) : (
+            <DataTable frame={frame} scatter={scatter} />
+          )}
+        </div>
+        {busy && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs text-muted-foreground shadow-sm">
+              <Loader2 className="size-3.5 animate-spin" />
+              차트를 그리는 중…
+            </p>
+          </div>
         )}
       </div>
     </CanvasFrame>

@@ -24,6 +24,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import type { ChartType } from "@/components/chart-type-picker"
+import { cn } from "@/lib/utils"
 import {
   OTHER_LABEL,
   type ChartFrame,
@@ -111,19 +112,32 @@ const SPOT_LABEL = {
   fontWeight: 500,
 } as const
 
+/** 마크 하나가 이보다 좁아지면 못 읽는다. 이 밑으로 내려가면 스크롤로 넘긴다. */
+const MIN_SLOT = 28
+
 /**
  * 축 이름은 Recharts의 `label` 대신 바깥에 HTML로 둔다. `insideLeft` 회전 라벨은
  * 눈금과 겹치고 폭을 예측할 수 없다. 여기 두면 텍스트 토큰도 그대로 쓸 수 있다.
+ *
+ * `scrollCount`를 주면 그만큼 자리를 확보하고, 화면보다 넓어지면 스크롤로 넘긴다.
+ * 범주가 많아도 자르지 않으므로 막대가 1px가 되는 것을 이렇게 피한다.
  */
 function AxisFrame({
   xLabel,
   yLabel,
+  scrollCount,
+  vertical,
   children,
 }: {
   xLabel: string
   yLabel: string
+  scrollCount?: number
+  /** 가로 막대처럼 범주가 세로로 쌓이는 경우 */
+  vertical?: boolean
   children: React.ReactNode
 }) {
+  const span = scrollCount ? scrollCount * MIN_SLOT : undefined
+
   return (
     <div className="absolute inset-0 flex flex-col">
       <div className="flex min-h-0 flex-1 gap-1">
@@ -133,7 +147,20 @@ function AxisFrame({
         >
           {truncate(yLabel, 24)}
         </div>
-        <div className="relative min-h-0 min-w-0 flex-1">{children}</div>
+        <div
+          className={cn(
+            "relative min-h-0 min-w-0 flex-1",
+            span && (vertical ? "overflow-y-auto" : "overflow-x-auto")
+          )}
+        >
+          {/* 넘칠 때만 자리를 넓힌다. 좁으면 min-*가 무시되어 그대로 꽉 찬다. */}
+          <div
+            className="relative h-full w-full"
+            style={span ? (vertical ? { minHeight: span } : { minWidth: span }) : undefined}
+          >
+            {children}
+          </div>
+        </div>
       </div>
       <p
         className="mt-1 shrink-0 truncate text-center text-[11px] text-muted-foreground"
@@ -194,7 +221,7 @@ function CartesianView({
   if (chartType === "line" || chartType === "area") {
     const Chart = chartType === "line" ? LineChart : AreaChart
     return (
-      <AxisFrame xLabel={frame.xLabel} yLabel={frame.yLabel}>
+      <AxisFrame xLabel={frame.xLabel} yLabel={frame.yLabel} scrollCount={rows.length}>
         <ChartContainer config={config} className="absolute inset-0 aspect-auto">
           <Chart
             data={rows}
@@ -264,6 +291,8 @@ function CartesianView({
     <AxisFrame
       xLabel={horizontal ? frame.yLabel : frame.xLabel}
       yLabel={horizontal ? frame.xLabel : frame.yLabel}
+      scrollCount={rows.length}
+      vertical={horizontal}
     >
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">
         <BarChart
