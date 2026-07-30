@@ -21,8 +21,11 @@ export type MappingSlot = {
   accepts: ColumnType[]
   /** 시리즈 슬롯처럼 고유값이 적어야만 쓸 수 있는 경우 */
   maxDistinct?: number
-  /** 자동 선택에서 고유값이 너무 많은 컬럼을 뒤로 미룰지. 후보에서 빼지는 않는다. */
-  avoidHighCardinality?: boolean
+  /**
+   * 자동 선택에서 고유값이 너무 많거나(막대 수천 개) 하나뿐인(막대 하나) 컬럼을 뒤로
+   * 미룰지. 후보에서 빼지는 않으니 직접 고르는 건 된다.
+   */
+  preferModerateCardinality?: boolean
 }
 
 /**
@@ -36,9 +39,9 @@ const CATEGORY: MappingSlot = {
   key: "category",
   label: "범주",
   accepts: ["category", "date"],
-  // ID처럼 행마다 값이 다른 컬럼을 범주로 잡으면 막대 수천 개짜리 무의미한 차트가 된다.
-  // 고를 수는 있게 두되 자동 선택에서만 뒤로 민다.
-  avoidHighCardinality: true,
+  // 자동 선택이 극단을 피하게 한다. ID처럼 행마다 다른 컬럼은 막대 수천 개가 되고,
+  // 값이 하나뿐인 컬럼은 막대 하나짜리 차트가 된다(둘 다 아무것도 못 보여준다).
+  preferModerateCardinality: true,
 }
 const SERIES: MappingSlot = {
   key: "series",
@@ -76,6 +79,13 @@ export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
 export function candidatesFor(slot: MappingSlot, columns: ColumnInfo[]): ColumnInfo[] {
   return columns
     .filter((column) => {
+      // 값이 하나도 없는 컬럼은 어떤 슬롯에서도 그릴 게 없다. 후보로 두면 자동 선택이
+      // 집어가서 "그릴 수 있는 값이 없습니다"로 끝난다 — 컬럼 목록에는 남아 있고
+      // 거기서 "값이 모두 비어 있습니다"로 알려준다.
+      //
+      // 판정은 전수로 센 `distinctCount`로 한다. `sampled`는 띄엄띄엄 뽑은 결과라
+      // 값이 드문드문 있는 컬럼에서 0이 나올 수 있다.
+      if (column.distinctCount === 0) return false
       if (!slot.accepts.includes(column.type)) return false
       if (slot.maxDistinct === undefined) return true
       return !column.distinctCapped && column.distinctCount <= slot.maxDistinct
@@ -127,10 +137,16 @@ export function fillMapping(
   for (const slot of slots) {
     if (slot.optional || filled[slot.key]) continue
     const free = candidatesFor(slot, columns).filter((column) => !used.has(column.name))
-    // 고유값이 상한까지 찬 컬럼(ID 같은 것)은 쓸 만한 대안이 있으면 뒤로 민다.
-    const preferred = slot.avoidHighCardinality
-      ? (free.find((column) => !column.distinctCapped) ?? free[0])
-      : free[0]
+
+    // 값이 하나뿐이면 막대 하나짜리 차트고, 샘플에 값이 없었으면 대부분 빈 컬럼이다.
+    // 둘 다 열자마자 보여줄 첫 차트로는 못 쓴다.
+    const informative = free.filter((column) => column.sampled > 0 && column.distinctCount >= 2)
+    // 범주 쪽은 반대 극단(ID처럼 행마다 다른 값)도 피한다.
+    const pool = slot.preferModerateCardinality
+      ? informative.filter((column) => !column.distinctCapped)
+      : informative
+    // 셋 다 비면 어쩔 수 없이 첫 후보. 아무것도 안 고르는 것보단 낫다.
+    const preferred = pool[0] ?? informative[0] ?? free[0]
     if (preferred) {
       filled[slot.key] = preferred.name
       used.add(preferred.name)

@@ -21,7 +21,11 @@ const LOW_CONFIDENCE = 0.9
 /** 왜 못 미더운지 그대로 말해준다. 확인해야 할 게 타입마다 다르다. */
 function warning(column: ColumnInfo): string | null {
   if (column.type !== column.inferred) return null // 사용자가 이미 손댔다
-  if (column.sampled === 0) return "값이 모두 비어 있습니다."
+  // distinctCount는 전수, sampled는 띄엄띄엄 뽑은 것이라 둘을 구분해서 말해야 정확하다.
+  if (column.distinctCount === 0) return "값이 모두 비어 있습니다. 차트에 쓸 수 없습니다."
+  if (column.sampled === 0) {
+    return "샘플에 값이 없었습니다. 대부분 비어 있는 컬럼이라 추론을 믿기 어렵습니다."
+  }
   if (column.confidence >= LOW_CONFIDENCE) return null
 
   const percent = Math.round(column.confidence * 100)
