@@ -23,25 +23,63 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function AxisSelect({
-  id,
-  label,
-  hint,
-  columns,
-}: {
-  id: string
-  label: string
-  hint?: string
-  columns: string[]
-}) {
+type MappingSlot = { key: string; label: string; optional?: boolean }
+
+/**
+ * 종류마다 필요한 컬럼의 역할이 다르다. 막대·원형은 범주/값이고, 선·산점도는 양쪽이
+ * 축이다. 누적 막대는 무엇으로 쌓을지가 없으면 그냥 막대라서 분할이 필수다.
+ */
+const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
+  bar: [
+    { key: "category", label: "범주" },
+    { key: "value", label: "값" },
+    { key: "series", label: "분할", optional: true },
+  ],
+  hbar: [
+    { key: "category", label: "범주" },
+    { key: "value", label: "값" },
+    { key: "series", label: "분할", optional: true },
+  ],
+  stacked: [
+    { key: "category", label: "범주" },
+    { key: "value", label: "값" },
+    { key: "series", label: "누적 기준" },
+  ],
+  line: [
+    { key: "x", label: "X축" },
+    { key: "y", label: "Y축" },
+    { key: "series", label: "분할", optional: true },
+  ],
+  area: [
+    { key: "x", label: "X축" },
+    { key: "y", label: "Y축" },
+    { key: "series", label: "분할", optional: true },
+  ],
+  scatter: [
+    { key: "x", label: "X축" },
+    { key: "y", label: "Y축" },
+    { key: "series", label: "분할", optional: true },
+  ],
+  pie: [
+    { key: "category", label: "범주" },
+    { key: "value", label: "값" },
+  ],
+}
+
+function MappingSelect({ slot, columns }: { slot: MappingSlot; columns: string[] }) {
+  const id = `mapping-${slot.key}`
   return (
-    <div className="grid grid-cols-[3.25rem_1fr] items-center gap-2">
+    <div className="grid grid-cols-[4.5rem_1fr] items-center gap-2">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
+        {slot.label}
       </Label>
       <Select disabled={columns.length === 0}>
         <SelectTrigger id={id} size="sm" className="w-full font-mono text-xs">
-          <SelectValue placeholder={columns.length === 0 ? "—" : (hint ?? "컬럼 선택")} />
+          <SelectValue
+            placeholder={
+              columns.length === 0 ? "—" : slot.optional ? "없음" : "컬럼 선택"
+            }
+          />
         </SelectTrigger>
         <SelectContent>
           {columns.map((column) => (
@@ -118,11 +156,11 @@ export function SettingsSidebar({
           </section>
 
           <section>
-            <SectionLabel>축</SectionLabel>
+            <SectionLabel>매핑</SectionLabel>
             <div className="space-y-2">
-              <AxisSelect id="axis-x" label="X축" columns={columns} />
-              <AxisSelect id="axis-y" label="Y축" columns={columns} />
-              <AxisSelect id="axis-series" label="분할" hint="없음" columns={columns} />
+              {MAPPING_SLOTS[chartType].map((slot) => (
+                <MappingSelect key={slot.key} slot={slot} columns={columns} />
+              ))}
             </div>
             {dataset && columns.length === 0 && (
               <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
