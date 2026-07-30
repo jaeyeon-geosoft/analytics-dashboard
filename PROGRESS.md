@@ -78,6 +78,26 @@ validateFile() 통과
 막대·원형은 역할 이름(범주/값)을, 선·산점도는 축 이름(X축/Y축)을 쓴다 — 후자는 양쪽이
 모두 수치라서 역할로 부를 이름이 없다.
 
+### 선택값은 슬롯 key로 살아남는다
+
+선택 상태는 `App.tsx`가 `Mapping`(= `Partial<Record<MappingKey, string>>`)으로 들고 있다.
+차트 종류를 바꿔도 **같은 key면 선택한 컬럼이 유지**된다.
+
+```
+막대   범주=region  값=—  분할=quarter
+ → 선   X축=—  Y축=—  분할=quarter      (series만 넘어옴)
+ → 원형  범주=region  값=—               (category가 되살아남)
+ → 막대  범주=region  값=—  분할=quarter  (원래대로)
+```
+
+`category`와 `x`는 역할이 달라서 서로 넘어가지 않는다. 현재 종류에 없는 슬롯의 값도
+버리지 않고 들고 있다가 되돌아오면 복원한다. 새 파일을 열면 컬럼 자체가 바뀌므로
+`handleFile`에서 전부 비운다.
+
+**아직 없는 것:** 선택 슬롯(분할)을 다시 "없음"으로 되돌릴 방법. Radix `SelectItem`은
+빈 문자열 value를 못 받아서 별도 sentinel 항목이나 지우기 버튼이 필요하다. 매핑 Select가
+아직 비활성이라 지금은 드러나지 않는다.
+
 ## 확인된 함정
 
 - **Radix `TooltipTrigger asChild`로 `ToggleGroupItem`을 감싸지 말 것.** 툴팁 트리거의

@@ -23,7 +23,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-type MappingSlot = { key: string; label: string; optional?: boolean }
+/**
+ * 슬롯 key는 차트 종류를 넘나든다. 막대의 `series`와 선의 `series`는 같은 역할이므로,
+ * 종류를 바꿔도 선택한 컬럼이 그대로 남는다. 반대로 `category`와 `x`는 다른 역할이라
+ * 서로 넘어가지 않는다.
+ */
+export type MappingKey = "category" | "value" | "series" | "x" | "y"
+
+export type Mapping = Partial<Record<MappingKey, string>>
+
+type MappingSlot = { key: MappingKey; label: string; optional?: boolean }
 
 /**
  * 종류마다 필요한 컬럼의 역할이 다르다. 막대·원형은 범주/값이고, 선·산점도는 양쪽이
@@ -66,14 +75,24 @@ const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   ],
 }
 
-function MappingSelect({ slot, columns }: { slot: MappingSlot; columns: string[] }) {
+function MappingSelect({
+  slot,
+  columns,
+  value,
+  onValueChange,
+}: {
+  slot: MappingSlot
+  columns: string[]
+  value?: string
+  onValueChange: (column: string) => void
+}) {
   const id = `mapping-${slot.key}`
   return (
     <div className="grid grid-cols-[4.5rem_1fr] items-center gap-2">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {slot.label}
       </Label>
-      <Select disabled={columns.length === 0}>
+      <Select value={value} onValueChange={onValueChange} disabled={columns.length === 0}>
         <SelectTrigger id={id} size="sm" className="w-full font-mono text-xs">
           <SelectValue
             placeholder={
@@ -98,12 +117,16 @@ export function SettingsSidebar({
   columns,
   chartType,
   onChartTypeChange,
+  mapping,
+  onMappingChange,
   onFile,
 }: {
   dataset: Dataset | null
   columns: string[]
   chartType: ChartType
   onChartTypeChange: (value: ChartType) => void
+  mapping: Mapping
+  onMappingChange: (key: MappingKey, column: string) => void
   onFile: (file: File) => void
 }) {
   return (
@@ -159,7 +182,13 @@ export function SettingsSidebar({
             <SectionLabel>매핑</SectionLabel>
             <div className="space-y-2">
               {MAPPING_SLOTS[chartType].map((slot) => (
-                <MappingSelect key={slot.key} slot={slot} columns={columns} />
+                <MappingSelect
+                  key={slot.key}
+                  slot={slot}
+                  columns={columns}
+                  value={mapping[slot.key]}
+                  onValueChange={(column) => onMappingChange(slot.key, column)}
+                />
               ))}
             </div>
             {dataset && columns.length === 0 && (
