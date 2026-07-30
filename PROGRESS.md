@@ -4,32 +4,36 @@
 
 ## 지금 단계
 
-**CSV/TSV 한 바퀴 완주.** 파일을 열면 차트가 그려진다.
+**한 바퀴 완주.** 파일을 열면 차트가 그려진다. 계획했던 작업은 다 끝났다.
 
-인코딩 감지 → 파싱 → 컬럼 타입 추론 → 매핑 자동 채움 → 차트 7종 렌더링까지 이어진다.
-추론이 틀리면 사이드바에서 고칠 수 있고, 고치면 매핑 후보와 차트가 따라 바뀐다.
-모든 차트에 표 보기가 함께 있다.
+```
+파일 → 확장자·크기 검증 → 인코딩 감지 → 파싱(CSV/TSV·Excel)
+     → 컬럼 타입 추론 → 매핑 자동 채움 → 차트 7종 + 표 보기
+```
 
-CSV/TSV와 Excel(`.xlsx`/`.xls`) 모두 열리고, 헤더가 1행이 아닌 파일도 지정해서 읽는다.
-남은 것은 좁은 폭 검증, 직접 라벨(최대·최신값) 정도다.
+CSV/TSV와 Excel(`.xlsx`/`.xls`) 모두 열리고, 여러 시트와 헤더가 1행이 아닌 파일도
+지정해서 읽는다. 추론이 틀리면 사이드바에서 고칠 수 있고, 고치면 매핑 후보와 차트가
+따라 바뀐다. 데스크톱과 모바일(390px) 양쪽에서 확인했다.
 
-UI 셸과 데이터 로직을 일부러 분리해서 진행 중이다. 셸을 먼저 고정해두면 파서를 붙일 때
-화면 구조를 다시 흔들 일이 없다.
+**다음에 할 만한 것** (아직 아무것도 정해지지 않았다):
+정렬·필터(지금은 상위 30개 고정), 차트 PNG 내보내기, 원격 푸시.
 
 ## 화면 구조
 
 ```
-┌─ AppHeader (h-14) ───────────────────────────────┐
-│  워드마크          [파일 열기] │ [테마 토글]      │
-├─ SettingsSidebar (w-72) ─┬─ main ────────────────┤
-│  데이터셋                 │  ChartCanvas         │
-│  컬럼 (타입 배지 + 수정)   │   empty   드롭존      │
-│  차트 종류 (7종 피커)      │            ⋮         │
-│  매핑 (종류별로 다름)      │   loading 스켈레톤     │
-│                          │   error   Alert+드롭존 │
-│  ─ 로컬 전용 계약 3줄 ─    │   ready   플롯 프레임  │
-└──────────────────────────┴───────────────────────┘
+┌─ AppHeader (h-14) ─────────────────────────────────┐
+│  워드마크            [파일 열기] │ [테마 토글]      │
+├─ SettingsSidebar (w-72) ─┬─ main ──────────────────┤
+│  데이터셋                 │  ChartCanvas           │
+│    파일 · 시트 · 헤더 행   │   empty   드롭존        │
+│  컬럼 (타입 배지 + 수정)   │   loading 스켈레톤       │
+│  차트 종류 (7종 피커)      │   error   Alert+드롭존   │
+│  매핑 (종류별) + 집계      │   ready   [차트|표] 전환 │
+│  ─ 로컬 전용 계약 3줄 ─    │                        │
+└──────────────────────────┴────────────────────────┘
 ```
+
+시트 선택은 Excel에서 시트가 2개 이상일 때만, 헤더 행은 파일을 연 뒤에만 나온다.
 
 `lg` 미만에서는 **캔버스가 위, 설정이 아래로** 쌓이고 페이지가 스크롤된다(`flex-col-reverse`).
 설정이 위에 있으면 스크롤을 한참 내려야 차트가 나온다. 쌓였을 때는 사이드바 내용을
@@ -52,14 +56,14 @@ UI 셸과 데이터 로직을 일부러 분리해서 진행 중이다. 셸을 �
 |---|---|
 | `src/App.tsx` | 상태 보유(`CanvasState`, `ChartType`), 파일 핸들러 |
 | `src/components/app-header.tsx` | 워드마크, 파일 열기, 테마 토글 |
-| `src/components/settings-sidebar.tsx` | 데이터셋 카드 / 컬럼 / 차트 종류 / 매핑 / 로컬 전용 계약 |
+| `src/components/settings-sidebar.tsx` | 데이터셋(시트·헤더 행) / 컬럼 / 차트 종류 / 매핑·집계 / 로컬 전용 계약 |
 | `src/components/chart-type-picker.tsx` | 7종 피커(막대/가로 막대/누적 막대/선/영역/산점도/원형) + 직접 그린 마크 글리프 |
-| `src/components/chart-canvas.tsx` | 캔버스 4개 상태 |
+| `src/components/chart-canvas.tsx` | 캔버스 4개 상태 + 차트/표 전환 |
 | `src/components/file-dropzone.tsx` | 드래그&드롭 + 파일 선택 |
 | `src/components/theme-toggle.tsx` | 라이트/다크 (`localStorage`, 데이터 아님) |
 | `src/lib/file-constraints.ts` | 확장자 목록, 크기 상한(50MB), `validateFile()` |
 | `src/components/column-list.tsx` | 컬럼별 타입 배지 + 덮어쓰기, 불확실 경고 |
-| `src/lib/parse-file.ts` | 인코딩 감지 + papaparse 파싱, 행 상한(10만) |
+| `src/lib/parse-file.ts` | 인코딩 감지, CSV(papaparse)·Excel(SheetJS) 파싱, 헤더 행, 행 상한(10만) |
 | `src/lib/infer-types.ts` | 컬럼 타입 추론 (숫자/날짜/범주 + 신뢰도 + 고유값 수) |
 | `src/lib/mapping-slots.ts` | 슬롯 정의, 후보 필터, 자동 채움, 무효 선택 정리 |
 | `src/lib/aggregate.ts` | 집계(합계/평균/개수) + 차트가 먹을 모양으로 변환 |
@@ -73,12 +77,14 @@ UI 셸과 데이터 로직을 일부러 분리해서 진행 중이다. 셸을 �
 ```
 validateFile()  확장자·크기 (파싱 없이)
   → loading
-  → parseFile()  전체 디코딩 → papaparse
+  → parseFile()  확장자로 갈라 CSV(papaparse) 또는 Excel(SheetJS)
+  → shape()    행 배열에서 헤더 행을 뽑아 객체 행으로
   → 컬럼 0개 / 행 0개면 error
   → ready { dataset, data }
 ```
 
-`ParsedFile`은 `columns` / `rows` / `encoding` / `truncated` / `errorCount`를 담는다.
+`ParsedFile`은 `columns` / `rows` / `encoding` / `truncated` / `errorCount` / `sheets` /
+`sheet` / `headerRow` / `preview`(헤더 행 후보용 앞 10행)를 담는다.
 `SettingsSidebar`는 `data.columns`로 매핑 Select를 채우고, 캔버스는 행·컬럼 수와 경고를
 헤더에 띄운다.
 
@@ -201,7 +207,6 @@ SheetJS는 동적 import라 Excel을 열 때만 받는다(gzip 160KB 별도 청�
 
 ## 미결정 사항
 
-- **헤더가 1행이 아닌 파일** — 제목 줄이 위에 붙은 리포트성 CSV·Excel. "헤더 행 지정" UI 필요.
 - **큰 Excel의 시트 전환** — 지금은 원본을 다시 읽는다. 느려지면 워크북을 들고 있는 쪽으로.
 - **상태관리** — 아직 `useState`로 충분. 매핑 선택과 파싱 결과가 들어오면 재검토
 
@@ -244,8 +249,14 @@ SheetJS는 동적 import라 Excel을 열 때만 받는다(gzip 160KB 별도 청�
 
 ### 자동 채움과 정리
 
-- 파일을 열거나 차트 종류를 바꾸면 **비어 있는 필수 슬롯을 첫 후보로 채운다**(`fillMapping`).
+- 파일을 열거나 차트 종류를 바꾸면 **비어 있는 필수 슬롯을 채운다**(`fillMapping`).
   선택 슬롯(분할)은 건드리지 않는다 — 묻지도 않았는데 시리즈를 쪼개면 놀란다.
+- 아무거나 집지 않는다. **샘플에 값이 있고 고유값이 2 이상인** 컬럼을 먼저 본다 —
+  고유값이 1이면 막대 하나짜리 차트고, 샘플이 비었으면 대부분 빈 컬럼이다. 범주는
+  반대 극단(ID처럼 행마다 다른 값)도 피한다(`preferModerateCardinality`).
+  후보에서 빼는 게 아니라 순서만 미루는 것이라 직접 고르는 건 된다.
+- **값이 하나도 없는 컬럼(`distinctCount === 0`)은 아예 후보가 아니다.** 어떤 슬롯에서도
+  그릴 게 없고, 자동 선택이 집어가면 "그릴 수 있는 값이 없습니다"로 끝난다.
 - 차트 종류나 컬럼 타입이 바뀌어 예전 선택이 더는 후보가 아니면 걷어낸다(`pruneMapping`).
   단, **지금 종류에 없는 슬롯의 값은 남겨둔다** — 그게 아래 "같은 key면 유지"의 근거다.
 

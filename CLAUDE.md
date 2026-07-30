@@ -33,7 +33,7 @@
 - **Vite 8** + **React 19** + **TypeScript 6**
 - **Tailwind CSS 4** — `@tailwindcss/vite` 플러그인 방식, `tailwind.config` 파일 없음. 테마는 전부 `src/index.css`의 CSS 변수.
 - **shadcn/ui** — style `radix-rhea`, baseColor `neutral`, 아이콘 `lucide-react`
-- **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 아직 미설치이며, 필요할 때 `npx shadcn@latest add chart`로 추가한다 (recharts가 함께 설치됨).
+- **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 렌더러는 `src/components/chart-view.tsx` 한 곳이고, Recharts에서 반복해서 걸리는 함정은 [PROGRESS.md](PROGRESS.md)의 표에 모아뒀다.
 - **CSV/TSV 파서: papaparse** — `src/lib/parse-file.ts`에서만 쓴다. 순수 파서라 네트워크 호출 없음.
 - **Excel 파서: SheetJS(`xlsx`)** — npm 레지스트리 버전은 `0.18.5`에서 멈췄고 알려진 취약점이 있어서, **벤더 CDN 타르볼로 고정**되어 있다(`package.json`의 URL). 빌드 시점 설치일 뿐 런타임 네트워크 호출은 없다. 버전을 올릴 때도 같은 방식으로.
 
