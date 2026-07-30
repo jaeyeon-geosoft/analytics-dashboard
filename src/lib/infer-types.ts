@@ -60,9 +60,10 @@ export function toNumber(value: string): number | null {
 }
 
 function isNumber(value: string): boolean {
-  // 선행 0이 붙은 정수는 우편번호·사번·전화번호일 가능성이 높다. 숫자로 보면
-  // 0이 날아가서 원본을 잃는다.
-  if (/^0\d/.test(value.trim())) return false
+  // 선행 0이 붙은 **정수**는 우편번호·사번·전화번호일 가능성이 높다. 숫자로 보면
+  // 0이 날아가서 원본을 잃는다. 소수점이 있으면 그런 식별자가 아니므로
+  // `03.1`까지 범주로 몰면 안 된다.
+  if (/^0\d[\d,]*$/.test(value.trim())) return false
   return toNumber(value) !== null
 }
 
