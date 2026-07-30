@@ -14,6 +14,11 @@
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /*
+      한글은 기본값이면 단어 한가운데서 끊긴다("합계" → "합" / "계"). 어절 사이
+      공백에서만 끊기게 한다. 좁은 화면에서 특히 티가 난다.
+    */
+    word-break: keep-all;
   }
 
   * {

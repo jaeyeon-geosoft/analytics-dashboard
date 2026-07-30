@@ -42,8 +42,10 @@ export function ColumnList({
   columns: ColumnInfo[]
   onTypeChange: (name: string, type: ColumnType) => void
 }) {
+  // 높이 제한은 사이드바가 따로 스크롤되는 데스크톱에서만. 모바일은 페이지가
+  // 스크롤되므로 여기서 또 자르면 스크롤 영역이 겹쳐 손가락으로 다루기 나쁘다.
   return (
-    <div className="max-h-56 space-y-1 overflow-y-auto">
+    <div className="space-y-1 lg:max-h-56 lg:overflow-y-auto">
       {columns.map((column) => {
         const note = warning(column)
         return (
