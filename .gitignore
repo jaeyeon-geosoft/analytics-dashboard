@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code — 공유 설정(settings.json)은 커밋하고, 개인 설정은 제외
+.claude/settings.local.json
