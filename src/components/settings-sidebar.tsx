@@ -124,6 +124,7 @@ export function SettingsSidebar({
   onMappingChange,
   aggregation,
   onAggregationChange,
+  onSheetChange,
   onFile,
 }: {
   dataset: Dataset | null
@@ -136,6 +137,7 @@ export function SettingsSidebar({
   onMappingChange: (key: MappingKey, column?: string) => void
   aggregation: Aggregation
   onAggregationChange: (value: Aggregation) => void
+  onSheetChange: (name: string) => void
   onFile: (file: File) => void
 }) {
   return (
@@ -155,7 +157,9 @@ export function SettingsSidebar({
                   <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                     {formatBytes(dataset.size)}
                     {data && ` · ${data.rows.length.toLocaleString()}행`}
-                    {data && data.encoding !== "utf-8" && ` · ${data.encoding.toUpperCase()}`}
+                    {/* Excel은 인코딩 개념이 없어서 null이다. */}
+                    {data?.encoding && data.encoding !== "utf-8" &&
+                      ` · ${data.encoding.toUpperCase()}`}
                   </p>
                 </div>
                 <Button asChild variant="ghost" size="icon-xs" aria-label="다른 파일로 교체">
@@ -178,6 +182,27 @@ export function SettingsSidebar({
               <p className="rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
                 아직 연 파일이 없습니다.
               </p>
+            )}
+
+            {/* 시트가 하나뿐이면 고를 게 없다. */}
+            {data && data.sheets.length > 1 && (
+              <div className="mt-2 grid grid-cols-[4.5rem_1fr] items-center gap-2">
+                <Label htmlFor="sheet" className="text-xs text-muted-foreground">
+                  시트
+                </Label>
+                <Select value={data.sheet ?? undefined} onValueChange={onSheetChange}>
+                  <SelectTrigger id="sheet" size="sm" className="w-full font-mono text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {data.sheets.map((name) => (
+                      <SelectItem key={name} value={name} className="font-mono text-xs">
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </section>
 

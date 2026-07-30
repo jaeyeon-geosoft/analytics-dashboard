@@ -19,26 +19,32 @@ function App() {
   // 추론 결과 + 사용자가 고친 타입. 파일과 함께 갈아치운다.
   const [columns, setColumns] = useState<ColumnInfo[]>([])
   const [aggregation, setAggregation] = useState<Aggregation>("sum")
+  // 시트를 바꾸면 다시 읽어야 해서 원본 파일을 들고 있는다. 데이터가 아니라 참조다.
+  const [source, setSource] = useState<File | null>(null)
 
-  async function handleFile(file: File) {
+  async function handleFile(file: File, sheetName?: string) {
     const problem = validateFile(file)
     if (problem) {
       setState({ status: "error", fileName: file.name, message: problem })
       return
     }
 
-    setMapping({}) // 파일이 바뀌면 컬럼도 바뀐다
+    // 파일이든 시트든 바뀌면 컬럼이 통째로 달라진다.
+    setMapping({})
     setColumns([])
+    setSource(file)
     setState({ status: "loading", fileName: file.name })
 
     try {
-      const data = await parseFile(file)
+      const data = await parseFile(file, sheetName)
 
       if (data.columns.length === 0) {
         setState({
           status: "error",
           fileName: file.name,
-          message: "컬럼을 찾지 못했습니다. 첫 줄에 헤더가 있는지 확인해 주세요.",
+          message: data.sheet
+            ? `"${data.sheet}" 시트가 비어 있습니다.`
+            : "컬럼을 찾지 못했습니다. 첫 줄에 헤더가 있는지 확인해 주세요.",
         })
         return
       }
@@ -102,6 +108,7 @@ function App() {
             }
             aggregation={aggregation}
             onAggregationChange={setAggregation}
+            onSheetChange={(name: string) => source && handleFile(source, name)}
             onFile={handleFile}
           />
           <main className="min-w-0 flex-1 p-4 lg:min-h-0">
