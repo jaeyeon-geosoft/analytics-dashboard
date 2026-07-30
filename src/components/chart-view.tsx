@@ -79,6 +79,38 @@ function truncate(value: string, max = 12): string {
   return value.length > max ? `${value.slice(0, max)}…` : value
 }
 
+/** 직접 라벨이 붙을 자리를 담는 필드. 나머지 행은 빈 문자열이라 아무것도 안 그려진다. */
+const SPOT = "__spot"
+
+/**
+ * 한 점에만 값을 적어 넣는다. 라벨을 render prop으로 그리는 대신 데이터에 얹으면
+ * Recharts의 `LabelList`가 알아서 위치를 잡는다.
+ */
+function withSpotLabel(frame: ChartFrame, timeline: boolean) {
+  const key = frame.series[0]?.key
+  if (!key || frame.rows.length === 0) return frame.rows
+
+  const spot = timeline
+    ? frame.rows.length - 1 // 최신값
+    : frame.rows.reduce(
+        (best, row, index) => (Number(row[key]) > Number(frame.rows[best][key]) ? index : best),
+        0
+      ) // 최대값
+
+  return frame.rows.map((row, index) => ({
+    ...row,
+    [SPOT]: index === spot ? Number(row[key]).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
+  }))
+}
+
+/** 값·라벨 글자는 시리즈 색이 아니라 텍스트 색을 입는다(CLAUDE.md). */
+const SPOT_LABEL = {
+  dataKey: SPOT,
+  fill: "var(--foreground)",
+  fontSize: 11,
+  fontWeight: 500,
+} as const
+
 /**
  * 축 이름은 Recharts의 `label` 대신 바깥에 HTML로 둔다. `insideLeft` 회전 라벨은
  * 눈금과 겹치고 폭을 예측할 수 없다. 여기 두면 텍스트 토큰도 그대로 쓸 수 있다.
@@ -142,6 +174,12 @@ function CartesianView({
   const multi = frame.series.length > 1
   const horizontal = chartType === "hbar"
   const stacked = chartType === "stacked"
+  const timeline = chartType === "line" || chartType === "area"
+
+  // 의미 있는 지점 하나만 직접 라벨한다 — 막대는 최대값, 선·영역은 최신값.
+  // 모든 점에 숫자를 찍으면 아무도 안 읽는다(CLAUDE.md). 나머지 값은 축과 툴팁,
+  // 표 보기가 맡는다. 시리즈가 여럿이면 끝점이 서로 겹칠 수 있어 붙이지 않는다.
+  const rows = multi ? frame.rows : withSpotLabel(frame, timeline)
 
   const grid = (
     <CartesianGrid
@@ -159,8 +197,9 @@ function CartesianView({
       <AxisFrame xLabel={frame.xLabel} yLabel={frame.yLabel}>
         <ChartContainer config={config} className="absolute inset-0 aspect-auto">
           <Chart
-            data={frame.rows}
-            margin={{ top: 8, right: 16, bottom: 4, left: 4 }}
+            data={rows}
+            // 최신값 라벨이 마지막 점 위에 놓인다. 절반이 오른쪽으로 나가므로 자리를 둔다.
+            margin={{ top: 24, right: multi ? 16 : 40, bottom: 4, left: 4 }}
           >
             {grid}
             <XAxis
@@ -194,7 +233,9 @@ function CartesianView({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   dot={false}
+                  isAnimationActive={false}
                   activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
+                  label={multi ? undefined : { ...SPOT_LABEL, position: "top", offset: 8 }}
                 />
               ) : (
                 <Area
@@ -202,11 +243,13 @@ function CartesianView({
                   type="monotone"
                   dataKey={entry.key}
                   stackId={multi ? "a" : undefined}
+                  isAnimationActive={false}
                   stroke={multi ? SLOTS[index] : SINGLE}
                   strokeWidth={2}
                   fill={multi ? SLOTS[index] : SINGLE}
                   fillOpacity={0.1}
                   activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
+                  label={multi ? undefined : { ...SPOT_LABEL, position: "top", offset: 8 }}
                 />
               ),
             )}
@@ -224,9 +267,10 @@ function CartesianView({
     >
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">
         <BarChart
-          data={frame.rows}
+          data={rows}
           layout={horizontal ? "vertical" : "horizontal"}
-          margin={{ top: 8, right: 16, bottom: 4, left: 4 }}
+          // 최대값 라벨이 막대 끝 바깥에 놓일 자리를 둔다.
+          margin={{ top: horizontal ? 8 : 24, right: horizontal ? 56 : 16, bottom: 4, left: 4 }}
           barCategoryGap="20%"
         >
           {grid}
@@ -283,6 +327,7 @@ function CartesianView({
                 key={entry.key}
                 dataKey={entry.key}
                 stackId={stacked ? "a" : undefined}
+                isAnimationActive={false}
                 fill={multi ? SLOTS[index] : SINGLE}
                 maxBarSize={24}
                 // 데이터 끝만 둥글게, 베이스라인 쪽은 각지게.
@@ -290,6 +335,10 @@ function CartesianView({
                 // 누적 조각 사이는 테두리가 아니라 카드 색 2px 틈으로 갈라놓는다.
                 stroke={stacked ? "var(--card)" : undefined}
                 strokeWidth={stacked ? 2 : 0}
+                // 최대값 막대 끝에만 값을 적는다.
+                label={
+                  multi ? undefined : { ...SPOT_LABEL, position: horizontal ? "right" : "top", offset: 8 }
+                }
               />
             )
           })}
