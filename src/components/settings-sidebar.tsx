@@ -1,4 +1,4 @@
-import { FileSpreadsheet, Replace } from "lucide-react"
+import { FileSpreadsheet, Info, Replace } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
 import { ColumnList } from "@/components/column-list"
 import { AGGREGATION_LABELS, type Aggregation } from "@/lib/aggregate"
@@ -35,14 +36,37 @@ function rowSummary(cells: string[]): string {
   return filled.length > 3 ? `${summary}…` : summary
 }
 
-/** 라벨은 이름만 대고, 설명은 그 아래 한 줄이 맡는다. 둘을 한 덩어리로 붙여 쓰지 않는다. */
+/**
+ * 설명은 평소엔 숨어 있고 아이콘에 올렸을 때만 나온다. 사이드바를 설명문으로 채우지
+ * 않으려는 것이다. 버튼으로 두는 이유는 키보드로도 닿아야 하기 때문 —
+ * `<span>`이면 포커스가 안 간다.
+ */
+function Hint({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="설명"
+          className="text-muted-foreground/60 transition-colors hover:text-foreground focus-visible:text-foreground"
+        >
+          <Info className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-56 leading-snug">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
-    <div className="mb-2.5">
+    <div className="mb-2.5 flex items-center gap-1.5">
       <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
         {children}
       </h2>
-      {hint && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p>}
+      {hint && <Hint text={hint} />}
     </div>
   )
 }
@@ -78,10 +102,13 @@ function MappingSelect({
   const disabled = candidates.length === 0
 
   return (
-    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">
-        {slot.label}
-      </Label>
+    <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
+      <div className="flex items-center gap-1">
+        <Label htmlFor={id} className="text-xs text-muted-foreground">
+          {slot.label}
+        </Label>
+        <Hint text={slot.hint} />
+      </div>
       <Select
         // 선택 슬롯은 비었을 때도 "없음"이 실제로 선택된 상태로 둔다.
         value={value ? columnValue(value) : slot.optional ? NONE_VALUE : undefined}
@@ -121,8 +148,6 @@ function MappingSelect({
           ))}
         </SelectContent>
       </Select>
-      {/* 라벨만으로는 이 슬롯이 차트에서 뭐가 되는지 알 수 없다. */}
-      <p className="col-start-2 text-[11px] leading-snug text-muted-foreground">{slot.hint}</p>
     </div>
   )
 }
@@ -212,10 +237,13 @@ export function SettingsSidebar({
 
             {/* 헤더가 1행이 아닌 파일(제목 줄이 위에 붙은 리포트)을 위한 선택. */}
             {data && data.preview.length > 1 && (
-              <div className="mt-2 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
-                <Label htmlFor="header-row" className="text-xs text-muted-foreground">
-                  헤더 행
-                </Label>
+              <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="header-row" className="text-xs text-muted-foreground">
+                    헤더 행
+                  </Label>
+                  <Hint text="컬럼 이름이 적힌 줄. 제목 줄이 위에 붙은 파일만 바꾸면 됩니다." />
+                </div>
                 <Select
                   value={String(data.headerRow)}
                   onValueChange={(next) => onHeaderRowChange(Number(next))}
@@ -235,9 +263,6 @@ export function SettingsSidebar({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="col-start-2 text-[11px] leading-snug text-muted-foreground">
-                  컬럼 이름이 적힌 줄. 제목 줄이 위에 붙은 파일만 바꾸면 됩니다.
-                </p>
               </div>
             )}
 
@@ -295,10 +320,13 @@ export function SettingsSidebar({
               ))}
               {/* 산점도는 행 하나가 점 하나라 묶을 일이 없다. */}
               {chartType !== "scatter" && (
-                <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
-                  <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
-                    집계
-                  </Label>
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
+                      집계
+                    </Label>
+                    <Hint text="같은 범주가 여러 줄일 때 합칠 방법. 서울이 두 줄이면 매출을 더할지(합계) 평균 낼지(평균) 줄 수만 셀지(개수)." />
+                  </div>
                   <Select
                     value={aggregation}
                     onValueChange={(next) => onAggregationChange(next as Aggregation)}
@@ -315,9 +343,6 @@ export function SettingsSidebar({
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="col-start-2 text-[11px] leading-snug text-muted-foreground">
-                    같은 범주가 여러 줄일 때 합칠 방법
-                  </p>
                 </div>
               )}
             </div>
