@@ -41,7 +41,7 @@ function rowSummary(cells: string[]): string {
  * 않으려는 것이다. 버튼으로 두는 이유는 키보드로도 닿아야 하기 때문 —
  * `<span>`이면 포커스가 안 간다.
  */
-function Hint({ text }: { text: string }) {
+function Hint({ children }: { children: React.ReactNode }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -53,20 +53,53 @@ function Hint({ text }: { text: string }) {
           <Info className="size-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-56 leading-snug">
-        {text}
+      {/*
+        기본 툴팁은 한 줄짜리 칩이다(`inline-flex items-center`, 좌우 여백만 있음).
+        설명은 여러 줄이라 그대로 얹으면 뭉개진다. 배경·색은 디자인 시스템 그대로 두고
+        레이아웃만 편다 — 표면을 바꾸려 들면 화살표 색까지 따라다녀야 한다.
+      */}
+      <TooltipContent
+        side="right"
+        align="start"
+        sideOffset={8}
+        className="block max-w-72 px-3.5 py-3 text-left leading-relaxed"
+      >
+        {children}
       </TooltipContent>
     </Tooltip>
   )
 }
 
-function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+/** 슬롯 설명을 한 곳에 모은 표. 아이콘을 컨트롤마다 두면 그게 더 어수선하다. */
+function MappingGuide({ chartType }: { chartType: ChartType }) {
+  const rows = MAPPING_SLOTS[chartType].map((slot) => [slot.label, slot.hint] as const)
+  if (chartType !== "scatter") {
+    rows.push(["집계", "같은 범주가 여러 줄일 때 합칠 방법"])
+  }
+
+  return (
+    <>
+      <p>어느 컬럼을 차트의 어디에 놓을지 고릅니다.</p>
+      {/* 반전된 표면이라 muted-foreground를 쓰면 안 보인다. 배경색을 흐려서 쓴다. */}
+      <dl className="mt-2.5 space-y-1.5 border-t border-background/20 pt-2.5">
+        {rows.map(([label, hint]) => (
+          <div key={label} className="flex gap-2.5">
+            <dt className="w-14 shrink-0 font-medium">{label}</dt>
+            <dd className="min-w-0 text-background/70">{hint}</dd>
+          </div>
+        ))}
+      </dl>
+    </>
+  )
+}
+
+function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: React.ReactNode }) {
   return (
     <div className="mb-2.5 flex items-center gap-1.5">
       <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
         {children}
       </h2>
-      {hint && <Hint text={hint} />}
+      {hint && <Hint>{hint}</Hint>}
     </div>
   )
 }
@@ -103,12 +136,9 @@ function MappingSelect({
 
   return (
     <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
-      <div className="flex items-center gap-1">
-        <Label htmlFor={id} className="text-xs text-muted-foreground">
-          {slot.label}
-        </Label>
-        <Hint text={slot.hint} />
-      </div>
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {slot.label}
+      </Label>
       <Select
         // 선택 슬롯은 비었을 때도 "없음"이 실제로 선택된 상태로 둔다.
         value={value ? columnValue(value) : slot.optional ? NONE_VALUE : undefined}
@@ -242,7 +272,7 @@ export function SettingsSidebar({
                   <Label htmlFor="header-row" className="text-xs text-muted-foreground">
                     헤더 행
                   </Label>
-                  <Hint text="컬럼 이름이 적힌 줄. 제목 줄이 위에 붙은 파일만 바꾸면 됩니다." />
+                  <Hint>컬럼 이름이 적힌 줄. 제목 줄이 위에 붙은 파일만 바꾸면 됩니다.</Hint>
                 </div>
                 <Select
                   value={String(data.headerRow)}
@@ -307,7 +337,7 @@ export function SettingsSidebar({
           </section>
 
           <section>
-            <SectionLabel hint="어느 컬럼을 차트의 어디에 놓을지 고릅니다.">매핑</SectionLabel>
+            <SectionLabel hint={<MappingGuide chartType={chartType} />}>매핑</SectionLabel>
             <div className="space-y-2">
               {MAPPING_SLOTS[chartType].map((slot) => (
                 <MappingSelect
@@ -321,12 +351,9 @@ export function SettingsSidebar({
               {/* 산점도는 행 하나가 점 하나라 묶을 일이 없다. */}
               {chartType !== "scatter" && (
                 <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
-                      집계
-                    </Label>
-                    <Hint text="같은 범주가 여러 줄일 때 합칠 방법. 서울이 두 줄이면 매출을 더할지(합계) 평균 낼지(평균) 줄 수만 셀지(개수)." />
-                  </div>
+                  <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
+                    집계
+                  </Label>
                   <Select
                     value={aggregation}
                     onValueChange={(next) => onAggregationChange(next as Aggregation)}
