@@ -7,7 +7,7 @@ import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
 import type { Aggregation } from "@/lib/aggregate"
 import { validateFile } from "@/lib/file-constraints"
-import { parseFile } from "@/lib/parse-file"
+import { parseFile, type ParseOptions } from "@/lib/parse-file"
 import { inferColumns, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
 import { fillMapping, pruneMapping, type Mapping, type MappingKey } from "@/lib/mapping-slots"
 
@@ -22,21 +22,21 @@ function App() {
   // 시트를 바꾸면 다시 읽어야 해서 원본 파일을 들고 있는다. 데이터가 아니라 참조다.
   const [source, setSource] = useState<File | null>(null)
 
-  async function handleFile(file: File, sheetName?: string) {
+  async function handleFile(file: File, options: ParseOptions = {}) {
     const problem = validateFile(file)
     if (problem) {
       setState({ status: "error", fileName: file.name, message: problem })
       return
     }
 
-    // 파일이든 시트든 바뀌면 컬럼이 통째로 달라진다.
+    // 파일이든 시트든 헤더 행이든 바뀌면 컬럼이 통째로 달라진다.
     setMapping({})
     setColumns([])
     setSource(file)
     setState({ status: "loading", fileName: file.name })
 
     try {
-      const data = await parseFile(file, sheetName)
+      const data = await parseFile(file, options)
 
       if (data.columns.length === 0) {
         setState({
@@ -44,7 +44,7 @@ function App() {
           fileName: file.name,
           message: data.sheet
             ? `"${data.sheet}" 시트가 비어 있습니다.`
-            : "컬럼을 찾지 못했습니다. 첫 줄에 헤더가 있는지 확인해 주세요.",
+            : `${data.headerRow}행에서 컬럼을 찾지 못했습니다. 헤더가 다른 줄에 있는지 확인해 주세요.`,
         })
         return
       }
@@ -108,7 +108,14 @@ function App() {
             }
             aggregation={aggregation}
             onAggregationChange={setAggregation}
-            onSheetChange={(name: string) => source && handleFile(source, name)}
+            onSheetChange={(sheet: string) => source && handleFile(source, { sheet })}
+            onHeaderRowChange={(headerRow: number) =>
+              source &&
+              handleFile(source, {
+                sheet: state.status === "ready" ? (state.data.sheet ?? undefined) : undefined,
+                headerRow,
+              })
+            }
             onFile={handleFile}
           />
           <main className="min-w-0 flex-1 p-4 lg:min-h-0">

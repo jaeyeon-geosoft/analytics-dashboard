@@ -27,6 +27,14 @@ import type { ParsedFile } from "@/lib/parse-file"
 
 export type Dataset = { name: string; size: number }
 
+/** 헤더 행을 고를 때 그 줄에 뭐가 들어 있는지 보여준다. 번호만으로는 못 고른다. */
+function rowSummary(cells: string[]): string {
+  const filled = cells.map((cell) => cell.trim()).filter(Boolean)
+  if (filled.length === 0) return "(비어 있음)"
+  const summary = filled.slice(0, 3).join(", ")
+  return filled.length > 3 ? `${summary}…` : summary
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <h2 className="mb-2.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
@@ -125,6 +133,7 @@ export function SettingsSidebar({
   aggregation,
   onAggregationChange,
   onSheetChange,
+  onHeaderRowChange,
   onFile,
 }: {
   dataset: Dataset | null
@@ -138,6 +147,7 @@ export function SettingsSidebar({
   aggregation: Aggregation
   onAggregationChange: (value: Aggregation) => void
   onSheetChange: (name: string) => void
+  onHeaderRowChange: (row: number) => void
   onFile: (file: File) => void
 }) {
   return (
@@ -182,6 +192,31 @@ export function SettingsSidebar({
               <p className="rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
                 아직 연 파일이 없습니다.
               </p>
+            )}
+
+            {/* 헤더가 1행이 아닌 파일(제목 줄이 위에 붙은 리포트)을 위한 선택. */}
+            {data && data.preview.length > 1 && (
+              <div className="mt-2 grid grid-cols-[4.5rem_1fr] items-center gap-2">
+                <Label htmlFor="header-row" className="text-xs text-muted-foreground">
+                  헤더 행
+                </Label>
+                <Select
+                  value={String(data.headerRow)}
+                  onValueChange={(next) => onHeaderRowChange(Number(next))}
+                >
+                  <SelectTrigger id="header-row" size="sm" className="w-full text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {data.preview.map((cells, index) => (
+                      <SelectItem key={index} value={String(index + 1)} className="text-xs">
+                        <span className="text-muted-foreground">{index + 1}행</span>
+                        <span className="ml-1.5 font-mono">{rowSummary(cells)}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
             {/* 시트가 하나뿐이면 고를 게 없다. */}
