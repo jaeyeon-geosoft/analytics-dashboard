@@ -74,7 +74,7 @@ function MappingSelect({
   const disabled = candidates.length === 0
 
   return (
-    <div className="grid grid-cols-[4.5rem_1fr] items-center gap-2">
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {slot.label}
       </Label>
@@ -86,7 +86,7 @@ function MappingSelect({
         }
         disabled={disabled}
       >
-        <SelectTrigger id={id} size="sm" className="w-full font-mono text-xs">
+        <SelectTrigger id={id} size="sm" className="w-full min-w-0 font-mono text-xs">
           <SelectValue
             placeholder={
               disabled
@@ -152,8 +152,14 @@ export function SettingsSidebar({
 }) {
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-border lg:h-full lg:w-72 lg:border-r lg:border-b-0">
-      {/* min-h-0가 없으면 flex 자식이 부모를 넘쳐서 사이드바 대신 페이지가 스크롤된다. */}
-      <ScrollArea className="min-h-0 flex-1">
+      {/*
+        min-h-0가 없으면 flex 자식이 부모를 넘쳐서 사이드바 대신 페이지가 스크롤된다.
+
+        Radix는 뷰포트 안에 `display: table` 래퍼를 인라인 스타일로 넣는다. 그대로 두면
+        컨테이너 폭을 무시하고 내용만큼 부풀어서(288px 자리에 471px) 사이드바가 통째로
+        잘린다. 인라인 스타일을 이겨야 해서 `!`가 필요하다.
+      */}
+      <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:block!">
         <div className="space-y-6 p-4">
           <section>
             <SectionLabel>데이터셋</SectionLabel>
@@ -196,7 +202,7 @@ export function SettingsSidebar({
 
             {/* 헤더가 1행이 아닌 파일(제목 줄이 위에 붙은 리포트)을 위한 선택. */}
             {data && data.preview.length > 1 && (
-              <div className="mt-2 grid grid-cols-[4.5rem_1fr] items-center gap-2">
+              <div className="mt-2 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
                 <Label htmlFor="header-row" className="text-xs text-muted-foreground">
                   헤더 행
                 </Label>
@@ -204,14 +210,17 @@ export function SettingsSidebar({
                   value={String(data.headerRow)}
                   onValueChange={(next) => onHeaderRowChange(Number(next))}
                 >
-                  <SelectTrigger id="header-row" size="sm" className="w-full text-xs">
+                  <SelectTrigger id="header-row" size="sm" className="w-full min-w-0 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {data.preview.map((cells, index) => (
                       <SelectItem key={index} value={String(index + 1)} className="text-xs">
-                        <span className="text-muted-foreground">{index + 1}행</span>
-                        <span className="ml-1.5 font-mono">{rowSummary(cells)}</span>
+                        <span className="shrink-0 text-muted-foreground">{index + 1}행</span>
+                        {/* 트리거 안에서는 이 줄이 좁은 사이드바를 넘치면 안 된다. */}
+                        <span className="ml-1.5 min-w-0 truncate font-mono">
+                          {rowSummary(cells)}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -221,12 +230,12 @@ export function SettingsSidebar({
 
             {/* 시트가 하나뿐이면 고를 게 없다. */}
             {data && data.sheets.length > 1 && (
-              <div className="mt-2 grid grid-cols-[4.5rem_1fr] items-center gap-2">
+              <div className="mt-2 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
                 <Label htmlFor="sheet" className="text-xs text-muted-foreground">
                   시트
                 </Label>
                 <Select value={data.sheet ?? undefined} onValueChange={onSheetChange}>
-                  <SelectTrigger id="sheet" size="sm" className="w-full font-mono text-xs">
+                  <SelectTrigger id="sheet" size="sm" className="w-full min-w-0 font-mono text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -271,7 +280,7 @@ export function SettingsSidebar({
               ))}
               {/* 산점도는 행 하나가 점 하나라 묶을 일이 없다. */}
               {chartType !== "scatter" && (
-                <div className="grid grid-cols-[4.5rem_1fr] items-center gap-2">
+                <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
                   <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
                     집계
                   </Label>
@@ -280,7 +289,7 @@ export function SettingsSidebar({
                     onValueChange={(next) => onAggregationChange(next as Aggregation)}
                     disabled={columns.length === 0}
                   >
-                    <SelectTrigger id="aggregation" size="sm" className="w-full text-xs">
+                    <SelectTrigger id="aggregation" size="sm" className="w-full min-w-0 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

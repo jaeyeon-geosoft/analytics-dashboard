@@ -45,7 +45,7 @@ export function ColumnList({
         return (
           <div
             key={column.name}
-            className="grid grid-cols-[1fr_5.5rem] items-center gap-2"
+            className="grid grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-2"
           >
             <div className="flex min-w-0 items-center gap-1">
               <span className="truncate font-mono text-xs" title={column.name}>
@@ -62,7 +62,7 @@ export function ColumnList({
               value={column.type}
               onValueChange={(next) => onTypeChange(column.name, next as ColumnType)}
             >
-              <SelectTrigger size="sm" className="w-full text-xs" aria-label={`${column.name} 타입`}>
+              <SelectTrigger size="sm" className="w-full min-w-0 text-xs" aria-label={`${column.name} 타입`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

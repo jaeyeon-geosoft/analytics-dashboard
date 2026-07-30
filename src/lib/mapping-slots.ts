@@ -21,6 +21,8 @@ export type MappingSlot = {
   accepts: ColumnType[]
   /** 시리즈 슬롯처럼 고유값이 적어야만 쓸 수 있는 경우 */
   maxDistinct?: number
+  /** 자동 선택에서 고유값이 너무 많은 컬럼을 뒤로 미룰지. 후보에서 빼지는 않는다. */
+  avoidHighCardinality?: boolean
 }
 
 /**
@@ -30,7 +32,14 @@ export type MappingSlot = {
 const MAX_SERIES = 8
 
 const VALUE: MappingSlot = { key: "value", label: "값", accepts: ["number"] }
-const CATEGORY: MappingSlot = { key: "category", label: "범주", accepts: ["category", "date"] }
+const CATEGORY: MappingSlot = {
+  key: "category",
+  label: "범주",
+  accepts: ["category", "date"],
+  // ID처럼 행마다 값이 다른 컬럼을 범주로 잡으면 막대 수천 개짜리 무의미한 차트가 된다.
+  // 고를 수는 있게 두되 자동 선택에서만 뒤로 민다.
+  avoidHighCardinality: true,
+}
 const SERIES: MappingSlot = {
   key: "series",
   label: "분할",
@@ -117,10 +126,14 @@ export function fillMapping(
 
   for (const slot of slots) {
     if (slot.optional || filled[slot.key]) continue
-    const pick = candidatesFor(slot, columns).find((column) => !used.has(column.name))
-    if (pick) {
-      filled[slot.key] = pick.name
-      used.add(pick.name)
+    const free = candidatesFor(slot, columns).filter((column) => !used.has(column.name))
+    // 고유값이 상한까지 찬 컬럼(ID 같은 것)은 쓸 만한 대안이 있으면 뒤로 민다.
+    const preferred = slot.avoidHighCardinality
+      ? (free.find((column) => !column.distinctCapped) ?? free[0])
+      : free[0]
+    if (preferred) {
+      filled[slot.key] = preferred.name
+      used.add(preferred.name)
     }
   }
   return filled
