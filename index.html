@@ -1,9 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>analytics-dashboard</title>
+    <title>차트 뷰어</title>
+    <script>
+      // 첫 페인트 전에 테마를 적용해 깜빡임을 막는다. 테마는 데이터가 아니므로 저장해도 된다.
+      (() => {
+        const stored = localStorage.getItem('theme')
+        const dark = stored
+          ? stored === 'dark'
+          : window.matchMedia('(prefers-color-scheme: dark)').matches
+        document.documentElement.classList.toggle('dark', dark)
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
