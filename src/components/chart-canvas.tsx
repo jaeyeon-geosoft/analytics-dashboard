@@ -147,7 +147,12 @@ function ReadyCanvas({
   const caveats = [
     data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
     data.errorCount > 0 && `${data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
-    frame && frame.omitted > 0 && `상위 ${frame.rows.length}개만 그렸습니다 (${frame.omitted}개 생략).`,
+    frame &&
+      frame.folded > 0 &&
+      `조각이 많아 나머지 ${frame.folded}개 범주는 "기타"로 묶었습니다.`,
+    // 범주를 자르지는 않지만, 많으면 사실상 못 읽으므로 그건 말해준다.
+    frame && frame.folded === 0 && frame.rows.length > 40 &&
+      `범주가 ${frame.rows.length.toLocaleString()}개라 촘촘합니다. 표 보기로 값을 확인하세요.`,
     scatter && scatter.omitted > 0 && `점 ${scatter.omitted.toLocaleString()}개는 그리지 않았습니다.`,
   ].filter(Boolean)
 

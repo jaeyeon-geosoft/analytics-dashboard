@@ -10,9 +10,6 @@ export const AGGREGATION_LABELS: Record<Aggregation, string> = {
   count: "개수",
 }
 
-/** 막대가 1px가 되면 아무것도 못 읽는다. 상위 N개만 그리고 나머지는 잘렸다고 알린다. */
-const MAX_CATEGORIES = 30
-
 /** dataviz: 원형은 한눈에 보는 용도라 조각 6개까지. 나머지는 "기타"로 접는다. */
 const MAX_SLICES = 6
 
@@ -26,8 +23,8 @@ export type ChartFrame = {
   series: ChartSeries[]
   xLabel: string
   yLabel: string
-  /** 상한에 걸려 빠진 범주 수 */
-  omitted: number
+  /** 원형에서 "기타"로 접힌 범주 수. 다른 종류는 자르지 않으므로 항상 0 */
+  folded: number
 }
 
 export type ScatterFrame = {
@@ -143,23 +140,20 @@ export function buildChartFrame(
     entries.sort((a, b) => b.total - a.total)
   }
 
-  const limit = chartType === "pie" ? MAX_SLICES : MAX_CATEGORIES
-  let omitted = 0
-  if (entries.length > limit) {
-    if (chartType === "pie") {
-      // 원형은 잘라내면 전체가 안 맞는다. 나머지를 "기타"로 접어야 합이 유지된다.
-      const kept = entries.slice(0, limit - 1)
-      const rest = entries.slice(limit - 1)
-      const otherRow: Record<string, string | number> = { x: OTHER_LABEL }
-      for (const { key } of series) {
-        otherRow[key] = rest.reduce((sum, entry) => sum + Number(entry.row[key] ?? 0), 0)
-      }
-      omitted = rest.length
-      entries = [...kept, { row: otherRow, total: 0 }]
-    } else {
-      omitted = entries.length - limit
-      entries = entries.slice(0, limit)
+  // 범주는 자르지 않는다. 몇 개든 전부 그린다 — 잘라내면 분석가가 찾는 값이
+  // 조용히 빠질 수 있다. 많으면 읽기 어려워지는 건 화면에서 알린다.
+  let folded = 0
+  if (chartType === "pie" && entries.length > MAX_SLICES) {
+    // 원형만은 접는다. 조각을 잘라내면 합이 100%가 아니게 되고, 조각이 많으면
+    // 각도로 순위를 가릴 수 없어 애초에 원형으로 볼 수 없는 데이터다.
+    const kept = entries.slice(0, MAX_SLICES - 1)
+    const rest = entries.slice(MAX_SLICES - 1)
+    const otherRow: Record<string, string | number> = { x: OTHER_LABEL }
+    for (const { key } of series) {
+      otherRow[key] = rest.reduce((sum, entry) => sum + Number(entry.row[key] ?? 0), 0)
     }
+    folded = rest.length
+    entries = [...kept, { row: otherRow, total: 0 }]
   }
 
   return {
@@ -167,7 +161,7 @@ export function buildChartFrame(
     series,
     xLabel: xColumn,
     yLabel: valueColumn ? `${valueColumn} ${AGGREGATION_LABELS[aggregation]}` : "행 개수",
-    omitted,
+    folded,
   }
 }
 
