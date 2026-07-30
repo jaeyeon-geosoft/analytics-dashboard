@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/app-header"
 import { SettingsSidebar } from "@/components/settings-sidebar"
 import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
+import type { Aggregation } from "@/lib/aggregate"
 import { validateFile } from "@/lib/file-constraints"
 import { parseFile } from "@/lib/parse-file"
 import { inferColumns, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
@@ -17,6 +18,7 @@ function App() {
   const [mapping, setMapping] = useState<Mapping>({})
   // 추론 결과 + 사용자가 고친 타입. 파일과 함께 갈아치운다.
   const [columns, setColumns] = useState<ColumnInfo[]>([])
+  const [aggregation, setAggregation] = useState<Aggregation>("sum")
 
   async function handleFile(file: File) {
     const problem = validateFile(file)
@@ -98,10 +100,19 @@ function App() {
                 return next
               })
             }
+            aggregation={aggregation}
+            onAggregationChange={setAggregation}
             onFile={handleFile}
           />
           <main className="min-w-0 flex-1 p-4 lg:min-h-0">
-            <ChartCanvas state={state} onFile={handleFile} />
+            <ChartCanvas
+              state={state}
+              chartType={chartType}
+              mapping={mapping}
+              aggregation={aggregation}
+              columns={columns}
+              onFile={handleFile}
+            />
           </main>
         </div>
       </div>

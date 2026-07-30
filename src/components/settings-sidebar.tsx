@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select"
 import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
 import { ColumnList } from "@/components/column-list"
+import { AGGREGATION_LABELS, type Aggregation } from "@/lib/aggregate"
 import { ACCEPT_ATTR, formatBytes } from "@/lib/file-constraints"
 import { COLUMN_TYPE_LABELS, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
 import {
@@ -121,6 +122,8 @@ export function SettingsSidebar({
   onChartTypeChange,
   mapping,
   onMappingChange,
+  aggregation,
+  onAggregationChange,
   onFile,
 }: {
   dataset: Dataset | null
@@ -131,11 +134,14 @@ export function SettingsSidebar({
   onChartTypeChange: (value: ChartType) => void
   mapping: Mapping
   onMappingChange: (key: MappingKey, column?: string) => void
+  aggregation: Aggregation
+  onAggregationChange: (value: Aggregation) => void
   onFile: (file: File) => void
 }) {
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-border lg:h-full lg:w-72 lg:border-r lg:border-b-0">
-      <ScrollArea className="flex-1">
+      {/* min-h-0가 없으면 flex 자식이 부모를 넘쳐서 사이드바 대신 페이지가 스크롤된다. */}
+      <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-6 p-4">
           <section>
             <SectionLabel>데이터셋</SectionLabel>
@@ -203,6 +209,30 @@ export function SettingsSidebar({
                   onValueChange={(column) => onMappingChange(slot.key, column)}
                 />
               ))}
+              {/* 산점도는 행 하나가 점 하나라 묶을 일이 없다. */}
+              {chartType !== "scatter" && (
+                <div className="grid grid-cols-[4.5rem_1fr] items-center gap-2">
+                  <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
+                    집계
+                  </Label>
+                  <Select
+                    value={aggregation}
+                    onValueChange={(next) => onAggregationChange(next as Aggregation)}
+                    disabled={columns.length === 0}
+                  >
+                    <SelectTrigger id="aggregation" size="sm" className="w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(AGGREGATION_LABELS) as Aggregation[]).map((option) => (
+                        <SelectItem key={option} value={option} className="text-xs">
+                          {AGGREGATION_LABELS[option]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </section>
         </div>

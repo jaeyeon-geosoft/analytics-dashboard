@@ -14,7 +14,10 @@ export type MappingSlot = {
   key: MappingKey
   label: string
   optional?: boolean
-  /** 이 슬롯에 넣을 수 있는 컬럼 타입. 나머지는 후보에서 뺀다. */
+  /**
+   * 이 슬롯에 넣을 수 있는 컬럼 타입. 나머지는 후보에서 뺀다.
+   * **순서가 곧 선호도다** — 앞쪽 타입이 목록 위에 오고 자동 선택에서 먼저 잡힌다.
+   */
   accepts: ColumnType[]
   /** 시리즈 슬롯처럼 고유값이 적어야만 쓸 수 있는 경우 */
   maxDistinct?: number
@@ -36,8 +39,12 @@ const SERIES: MappingSlot = {
   maxDistinct: MAX_SERIES,
 }
 
-/** 선·영역의 X축은 순서만 있으면 되므로 셋 다 받는다 (분기 같은 범주도 정당하다). */
-const ORDERED_X: MappingSlot = { key: "x", label: "X축", accepts: ["date", "category", "number"] }
+/**
+ * 선·영역의 X축은 순서만 있으면 되므로 셋 다 받는다 — 분기(`2026-Q2`)처럼 순서가 있는
+ * 범주도 정당하다. 다만 날짜·숫자를 먼저 고른다. 지역처럼 순서 없는 범주를 선으로 이으면
+ * 데이터에 없는 추세를 만들어낸다.
+ */
+const ORDERED_X: MappingSlot = { key: "x", label: "X축", accepts: ["date", "number", "category"] }
 const NUMERIC_Y: MappingSlot = { key: "y", label: "Y축", accepts: ["number"] }
 
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
@@ -47,21 +54,25 @@ export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   stacked: [CATEGORY, VALUE, { ...SERIES, label: "누적 기준", optional: false }],
   line: [ORDERED_X, NUMERIC_Y, SERIES],
   area: [ORDERED_X, NUMERIC_Y, SERIES],
-  // 산점도는 두 축이 모두 수치여야 관계를 볼 수 있다.
+  // 산점도는 두 축이 모두 수치여야 관계를 볼 수 있다. 시리즈는 3개까지 —
+  // 아무 두 점이나 나란히 놓일 수 있어서 4개부터 색 구분이 무너진다(CLAUDE.md).
   scatter: [
     { key: "x", label: "X축", accepts: ["number"] },
     NUMERIC_Y,
-    SERIES,
+    { ...SERIES, maxDistinct: 3 },
   ],
   pie: [CATEGORY, VALUE],
 }
 
 export function candidatesFor(slot: MappingSlot, columns: ColumnInfo[]): ColumnInfo[] {
-  return columns.filter((column) => {
-    if (!slot.accepts.includes(column.type)) return false
-    if (slot.maxDistinct === undefined) return true
-    return !column.distinctCapped && column.distinctCount <= slot.maxDistinct
-  })
+  return columns
+    .filter((column) => {
+      if (!slot.accepts.includes(column.type)) return false
+      if (slot.maxDistinct === undefined) return true
+      return !column.distinctCapped && column.distinctCount <= slot.maxDistinct
+    })
+    // 선호하는 타입이 위로. 같은 타입끼리는 원래 컬럼 순서를 지킨다.
+    .sort((a, b) => slot.accepts.indexOf(a.type) - slot.accepts.indexOf(b.type))
 }
 
 /**

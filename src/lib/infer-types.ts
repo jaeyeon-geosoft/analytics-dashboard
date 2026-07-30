@@ -51,13 +51,19 @@ function isMissing(value: string): boolean {
 /** 천 단위 쉼표, 통화 기호, 퍼센트, 공백은 벗겨내고 본다. */
 const NUMERIC_NOISE = /[\s,₩$€¥£%]/g
 
+/** 숫자로 읽히면 그 값, 아니면 null. 추론과 집계가 같은 규칙을 쓰게 한다. */
+export function toNumber(value: string): number | null {
+  const stripped = value.trim().replace(NUMERIC_NOISE, "")
+  if (stripped === "") return null
+  const parsed = Number(stripped)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function isNumber(value: string): boolean {
-  const trimmed = value.trim()
   // 선행 0이 붙은 정수는 우편번호·사번·전화번호일 가능성이 높다. 숫자로 보면
   // 0이 날아가서 원본을 잃는다.
-  if (/^0\d/.test(trimmed)) return false
-  const stripped = trimmed.replace(NUMERIC_NOISE, "")
-  return stripped !== "" && Number.isFinite(Number(stripped))
+  if (/^0\d/.test(value.trim())) return false
+  return toNumber(value) !== null
 }
 
 /**
@@ -71,7 +77,8 @@ const DATE_PATTERNS = [
   /^(\d{4})[-/](\d{1,2})$/, // 2026-07 — 마침표는 소수점과 헷갈려서 뺀다
 ]
 
-function isDate(value: string): boolean {
+/** 날짜로 읽히면 정렬에 쓸 수 있는 수, 아니면 null. */
+export function toDateOrder(value: string): number | null {
   const trimmed = value.trim()
   for (const pattern of DATE_PATTERNS) {
     const match = pattern.exec(trimmed)
@@ -79,9 +86,14 @@ function isDate(value: string): boolean {
     const year = Number(match[1])
     const month = Number(match[2])
     const day = match[3] === undefined ? 1 : Number(match[3])
-    return year >= 1900 && year <= 2200 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+    if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1 || day > 31) return null
+    return year * 10000 + month * 100 + day
   }
-  return false
+  return null
+}
+
+function isDate(value: string): boolean {
+  return toDateOrder(value) !== null
 }
 
 export function inferColumns(
