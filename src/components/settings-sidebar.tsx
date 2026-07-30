@@ -14,7 +14,14 @@ import {
 import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
 import { ColumnList } from "@/components/column-list"
 import { ACCEPT_ATTR, formatBytes } from "@/lib/file-constraints"
-import type { ColumnInfo, ColumnType } from "@/lib/infer-types"
+import { COLUMN_TYPE_LABELS, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
+import {
+  MAPPING_SLOTS,
+  candidatesFor,
+  type Mapping,
+  type MappingKey,
+  type MappingSlot,
+} from "@/lib/mapping-slots"
 import type { ParsedFile } from "@/lib/parse-file"
 
 export type Dataset = { name: string; size: number }
@@ -28,63 +35,19 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * 슬롯 key는 차트 종류를 넘나든다. 막대의 `series`와 선의 `series`는 같은 역할이므로,
- * 종류를 바꿔도 선택한 컬럼이 그대로 남는다. 반대로 `category`와 `x`는 다른 역할이라
- * 서로 넘어가지 않는다.
- */
-export type MappingKey = "category" | "value" | "series" | "x" | "y"
-
-export type Mapping = Partial<Record<MappingKey, string>>
-
-type MappingSlot = { key: MappingKey; label: string; optional?: boolean }
-
-/**
- * 종류마다 필요한 컬럼의 역할이 다르다. 막대·원형은 범주/값이고, 선·산점도는 양쪽이
- * 축이다. 누적 막대는 무엇으로 쌓을지가 없으면 그냥 막대라서 분할이 필수다.
- */
-const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
-  bar: [
-    { key: "category", label: "범주" },
-    { key: "value", label: "값" },
-    { key: "series", label: "분할", optional: true },
-  ],
-  hbar: [
-    { key: "category", label: "범주" },
-    { key: "value", label: "값" },
-    { key: "series", label: "분할", optional: true },
-  ],
-  stacked: [
-    { key: "category", label: "범주" },
-    { key: "value", label: "값" },
-    { key: "series", label: "누적 기준" },
-  ],
-  line: [
-    { key: "x", label: "X축" },
-    { key: "y", label: "Y축" },
-    { key: "series", label: "분할", optional: true },
-  ],
-  area: [
-    { key: "x", label: "X축" },
-    { key: "y", label: "Y축" },
-    { key: "series", label: "분할", optional: true },
-  ],
-  scatter: [
-    { key: "x", label: "X축" },
-    { key: "y", label: "Y축" },
-    { key: "series", label: "분할", optional: true },
-  ],
-  pie: [
-    { key: "category", label: "범주" },
-    { key: "value", label: "값" },
-  ],
-}
-
-/**
  * Radix SelectItem은 빈 문자열 value를 못 받아서 "없음"에 별도 값이 필요하다.
  * 컬럼 쪽에 접두사를 붙여두면 `없음`이라는 이름의 컬럼이 있어도 겹치지 않는다.
  */
 const NONE_VALUE = "none"
 const columnValue = (column: string) => `col:${column}`
+
+/** 후보가 없을 때 왜 없는지 말해준다. 빈 드롭다운만 보여주면 알 수가 없다. */
+function emptyReason(slot: MappingSlot, hasColumns: boolean): string {
+  if (!hasColumns) return "—"
+  const types = slot.accepts.map((type) => COLUMN_TYPE_LABELS[type]).join("·")
+  if (slot.maxDistinct !== undefined) return `${types} 중 고유값 ${slot.maxDistinct}개 이하 없음`
+  return `${types} 컬럼 없음`
+}
 
 function MappingSelect({
   slot,
@@ -93,11 +56,14 @@ function MappingSelect({
   onValueChange,
 }: {
   slot: MappingSlot
-  columns: string[]
+  columns: ColumnInfo[]
   value?: string
   onValueChange: (column?: string) => void
 }) {
   const id = `mapping-${slot.key}`
+  const candidates = candidatesFor(slot, columns)
+  const disabled = candidates.length === 0
+
   return (
     <div className="grid grid-cols-[4.5rem_1fr] items-center gap-2">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
@@ -109,12 +75,16 @@ function MappingSelect({
         onValueChange={(next) =>
           onValueChange(next === NONE_VALUE ? undefined : next.slice("col:".length))
         }
-        disabled={columns.length === 0}
+        disabled={disabled}
       >
         <SelectTrigger id={id} size="sm" className="w-full font-mono text-xs">
           <SelectValue
             placeholder={
-              columns.length === 0 ? "—" : slot.optional ? "없음" : "컬럼 선택"
+              disabled
+                ? emptyReason(slot, columns.length > 0)
+                : slot.optional
+                  ? "없음"
+                  : "컬럼 선택"
             }
           />
         </SelectTrigger>
@@ -127,13 +97,13 @@ function MappingSelect({
               <SelectSeparator />
             </>
           )}
-          {columns.map((column) => (
+          {candidates.map((column) => (
             <SelectItem
-              key={column}
-              value={columnValue(column)}
+              key={column.name}
+              value={columnValue(column.name)}
               className="font-mono text-xs"
             >
-              {column}
+              {column.name}
             </SelectItem>
           ))}
         </SelectContent>
@@ -163,8 +133,6 @@ export function SettingsSidebar({
   onMappingChange: (key: MappingKey, column?: string) => void
   onFile: (file: File) => void
 }) {
-  const columnNames = columns.map((column) => column.name)
-
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-border lg:h-full lg:w-72 lg:border-r lg:border-b-0">
       <ScrollArea className="flex-1">
@@ -230,7 +198,7 @@ export function SettingsSidebar({
                 <MappingSelect
                   key={slot.key}
                   slot={slot}
-                  columns={columnNames}
+                  columns={columns}
                   value={mapping[slot.key]}
                   onValueChange={(column) => onMappingChange(slot.key, column)}
                 />

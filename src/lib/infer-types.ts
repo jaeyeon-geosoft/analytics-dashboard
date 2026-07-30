@@ -16,6 +16,24 @@ export type ColumnInfo = {
   confidence: number
   /** 실제로 들여다본 값의 개수. 0이면 컬럼이 통째로 비어 있다. */
   sampled: number
+  /** 고유값 개수. `distinctCapped`면 세다 멈춘 값이라 "그 이상"이라는 뜻만 갖는다. */
+  distinctCount: number
+  distinctCapped: boolean
+}
+
+/** 고유값은 이만큼만 센다. 시리즈 후보 판정에는 이 위로 정확한 수가 필요 없다. */
+const DISTINCT_CAP = 50
+
+function countDistinct(name: string, rows: Record<string, string>[]) {
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const value = row[name]
+    if (typeof value !== "string" || isMissing(value)) continue
+    seen.add(value)
+    // 고유값이 많은 컬럼일수록 여기서 일찍 빠져나온다.
+    if (seen.size > DISTINCT_CAP) return { distinctCount: DISTINCT_CAP, distinctCapped: true }
+  }
+  return { distinctCount: seen.size, distinctCapped: false }
 }
 
 /** 전수 검사할 필요 없다. 앞쪽만 보면 편향되므로 전체에 걸쳐 띄엄띄엄 뽑는다. */
@@ -86,8 +104,17 @@ export function inferColumns(
       else if (isNumber(value)) numbers += 1
     }
 
+    const distinct = countDistinct(name, rows)
+
     if (sampled === 0) {
-      return { name, type: "category", inferred: "category", confidence: 0, sampled: 0 }
+      return {
+        name,
+        type: "category",
+        inferred: "category",
+        confidence: 0,
+        sampled: 0,
+        ...distinct,
+      }
     }
 
     const dateRatio = dates / sampled
@@ -107,6 +134,6 @@ export function inferColumns(
       confidence = 1 - Math.max(dateRatio, numberRatio)
     }
 
-    return { name, type: inferred, inferred, confidence, sampled }
+    return { name, type: inferred, inferred, confidence, sampled, ...distinct }
   })
 }

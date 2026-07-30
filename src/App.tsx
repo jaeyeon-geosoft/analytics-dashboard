@@ -2,12 +2,13 @@ import { useState } from "react"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AppHeader } from "@/components/app-header"
-import { SettingsSidebar, type Mapping, type MappingKey } from "@/components/settings-sidebar"
+import { SettingsSidebar } from "@/components/settings-sidebar"
 import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
 import { validateFile } from "@/lib/file-constraints"
 import { parseFile } from "@/lib/parse-file"
 import { inferColumns, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
+import { fillMapping, pruneMapping, type Mapping, type MappingKey } from "@/lib/mapping-slots"
 
 function App() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
@@ -48,7 +49,10 @@ function App() {
         return
       }
 
-      setColumns(inferColumns(data.columns, data.rows))
+      const inferred = inferColumns(data.columns, data.rows)
+      setColumns(inferred)
+      // 열자마자 차트가 보여야 한다. 필수 슬롯만 채운다.
+      setMapping(fillMapping({}, chartType, inferred))
       setState({ status: "ready", dataset: { name: file.name, size: file.size }, data })
     } catch (error) {
       setState({
@@ -68,13 +72,23 @@ function App() {
             dataset={state.status === "ready" ? state.dataset : null}
             data={state.status === "ready" ? state.data : null}
             columns={columns}
-            onColumnTypeChange={(name: string, type: ColumnType) =>
-              setColumns((previous) =>
-                previous.map((column) => (column.name === name ? { ...column, type } : column))
+            onColumnTypeChange={(name: string, type: ColumnType) => {
+              const next = columns.map((column) =>
+                column.name === name ? { ...column, type } : column
               )
-            }
+              setColumns(next)
+              // 타입이 바뀌면 그 컬럼이 더는 후보가 아닐 수 있다. 비면 다시 채운다.
+              setMapping((previous) =>
+                fillMapping(pruneMapping(previous, chartType, next), chartType, next)
+              )
+            }}
             chartType={chartType}
-            onChartTypeChange={setChartType}
+            onChartTypeChange={(next: ChartType) => {
+              setChartType(next)
+              setMapping((previous) =>
+                fillMapping(pruneMapping(previous, next, columns), next, columns)
+              )
+            }}
             mapping={mapping}
             onMappingChange={(key: MappingKey, column?: string) =>
               setMapping((previous) => {
