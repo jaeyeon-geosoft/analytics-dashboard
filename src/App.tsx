@@ -7,12 +7,15 @@ import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
 import { validateFile } from "@/lib/file-constraints"
 import { parseFile } from "@/lib/parse-file"
+import { inferColumns, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
 
 function App() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
   const [chartType, setChartType] = useState<ChartType>("bar")
   // 슬롯 key로 잡아두면 차트 종류를 바꿔도 같은 역할의 선택이 살아남는다.
   const [mapping, setMapping] = useState<Mapping>({})
+  // 추론 결과 + 사용자가 고친 타입. 파일과 함께 갈아치운다.
+  const [columns, setColumns] = useState<ColumnInfo[]>([])
 
   async function handleFile(file: File) {
     const problem = validateFile(file)
@@ -22,6 +25,7 @@ function App() {
     }
 
     setMapping({}) // 파일이 바뀌면 컬럼도 바뀐다
+    setColumns([])
     setState({ status: "loading", fileName: file.name })
 
     try {
@@ -44,6 +48,7 @@ function App() {
         return
       }
 
+      setColumns(inferColumns(data.columns, data.rows))
       setState({ status: "ready", dataset: { name: file.name, size: file.size }, data })
     } catch (error) {
       setState({
@@ -62,6 +67,12 @@ function App() {
           <SettingsSidebar
             dataset={state.status === "ready" ? state.dataset : null}
             data={state.status === "ready" ? state.data : null}
+            columns={columns}
+            onColumnTypeChange={(name: string, type: ColumnType) =>
+              setColumns((previous) =>
+                previous.map((column) => (column.name === name ? { ...column, type } : column))
+              )
+            }
             chartType={chartType}
             onChartTypeChange={setChartType}
             mapping={mapping}

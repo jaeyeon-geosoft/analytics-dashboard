@@ -12,7 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
+import { ColumnList } from "@/components/column-list"
 import { ACCEPT_ATTR, formatBytes } from "@/lib/file-constraints"
+import type { ColumnInfo, ColumnType } from "@/lib/infer-types"
 import type { ParsedFile } from "@/lib/parse-file"
 
 export type Dataset = { name: string; size: number }
@@ -143,6 +145,8 @@ function MappingSelect({
 export function SettingsSidebar({
   dataset,
   data,
+  columns,
+  onColumnTypeChange,
   chartType,
   onChartTypeChange,
   mapping,
@@ -151,13 +155,15 @@ export function SettingsSidebar({
 }: {
   dataset: Dataset | null
   data: ParsedFile | null
+  columns: ColumnInfo[]
+  onColumnTypeChange: (name: string, type: ColumnType) => void
   chartType: ChartType
   onChartTypeChange: (value: ChartType) => void
   mapping: Mapping
   onMappingChange: (key: MappingKey, column?: string) => void
   onFile: (file: File) => void
 }) {
-  const columns = data?.columns ?? []
+  const columnNames = columns.map((column) => column.name)
 
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-border lg:h-full lg:w-72 lg:border-r lg:border-b-0">
@@ -201,6 +207,13 @@ export function SettingsSidebar({
             )}
           </section>
 
+          {columns.length > 0 && (
+            <section>
+              <SectionLabel>컬럼 {columns.length}개</SectionLabel>
+              <ColumnList columns={columns} onTypeChange={onColumnTypeChange} />
+            </section>
+          )}
+
           <section>
             <SectionLabel>차트 종류</SectionLabel>
             <ChartTypePicker
@@ -217,7 +230,7 @@ export function SettingsSidebar({
                 <MappingSelect
                   key={slot.key}
                   slot={slot}
-                  columns={columns}
+                  columns={columnNames}
                   value={mapping[slot.key]}
                   onValueChange={(column) => onMappingChange(slot.key, column)}
                 />
