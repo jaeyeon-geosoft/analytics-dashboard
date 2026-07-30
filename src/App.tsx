@@ -35,8 +35,13 @@ function App() {
             chartType={chartType}
             onChartTypeChange={setChartType}
             mapping={mapping}
-            onMappingChange={(key: MappingKey, column: string) =>
-              setMapping((previous) => ({ ...previous, [key]: column }))
+            onMappingChange={(key: MappingKey, column?: string) =>
+              setMapping((previous) => {
+                const next = { ...previous }
+                if (column) next[key] = column
+                else delete next[key]
+                return next
+              })
             }
             onFile={handleFile}
           />

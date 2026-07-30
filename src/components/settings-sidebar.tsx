@@ -7,6 +7,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -75,6 +76,13 @@ const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   ],
 }
 
+/**
+ * Radix SelectItem은 빈 문자열 value를 못 받아서 "없음"에 별도 값이 필요하다.
+ * 컬럼 쪽에 접두사를 붙여두면 `없음`이라는 이름의 컬럼이 있어도 겹치지 않는다.
+ */
+const NONE_VALUE = "none"
+const columnValue = (column: string) => `col:${column}`
+
 function MappingSelect({
   slot,
   columns,
@@ -84,7 +92,7 @@ function MappingSelect({
   slot: MappingSlot
   columns: string[]
   value?: string
-  onValueChange: (column: string) => void
+  onValueChange: (column?: string) => void
 }) {
   const id = `mapping-${slot.key}`
   return (
@@ -92,7 +100,14 @@ function MappingSelect({
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {slot.label}
       </Label>
-      <Select value={value} onValueChange={onValueChange} disabled={columns.length === 0}>
+      <Select
+        // 선택 슬롯은 비었을 때도 "없음"이 실제로 선택된 상태로 둔다.
+        value={value ? columnValue(value) : slot.optional ? NONE_VALUE : undefined}
+        onValueChange={(next) =>
+          onValueChange(next === NONE_VALUE ? undefined : next.slice("col:".length))
+        }
+        disabled={columns.length === 0}
+      >
         <SelectTrigger id={id} size="sm" className="w-full font-mono text-xs">
           <SelectValue
             placeholder={
@@ -101,8 +116,20 @@ function MappingSelect({
           />
         </SelectTrigger>
         <SelectContent>
+          {slot.optional && (
+            <>
+              <SelectItem value={NONE_VALUE} className="text-xs">
+                없음
+              </SelectItem>
+              <SelectSeparator />
+            </>
+          )}
           {columns.map((column) => (
-            <SelectItem key={column} value={column} className="font-mono text-xs">
+            <SelectItem
+              key={column}
+              value={columnValue(column)}
+              className="font-mono text-xs"
+            >
               {column}
             </SelectItem>
           ))}
@@ -126,7 +153,7 @@ export function SettingsSidebar({
   chartType: ChartType
   onChartTypeChange: (value: ChartType) => void
   mapping: Mapping
-  onMappingChange: (key: MappingKey, column: string) => void
+  onMappingChange: (key: MappingKey, column?: string) => void
   onFile: (file: File) => void
 }) {
   return (
