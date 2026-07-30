@@ -1,6 +1,6 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
-export type ChartType = "bar" | "hbar" | "stacked" | "line" | "area" | "scatter"
+export type ChartType = "bar" | "hbar" | "stacked" | "line" | "area" | "scatter" | "pie"
 
 /**
  * 글리프는 lucide 아이콘이 아니라 이 도구가 실제로 그리는 마크를 축소한 것이다.
@@ -87,6 +87,18 @@ const CHART_TYPES: { value: ChartType; label: string; hint: string; glyph: React
         <circle cx="8" cy="7.5" r="1.8" />
         <circle cx="12" cy="10.5" r="1.8" />
         <circle cx="15.5" cy="4.5" r="1.8" />
+      </>
+    ),
+  },
+  {
+    value: "pie",
+    label: "원형",
+    // 부분-전체는 누적 막대가 기본이다. 원형은 값이 뚜렷하게 차이 날 때만.
+    hint: "구성 비율 — 조각 6개 이하",
+    glyph: (
+      <>
+        <path d="M10 9 16.5 9A6.5 6.5 0 1 1 10 2.5Z" />
+        <path d="M10 9 10 2.5A6.5 6.5 0 0 1 16.5 9Z" opacity="0.4" />
       </>
     ),
   },
