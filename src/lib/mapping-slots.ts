@@ -13,6 +13,8 @@ export type Mapping = Partial<Record<MappingKey, string>>
 export type MappingSlot = {
   key: MappingKey
   label: string
+  /** 이 슬롯이 차트에서 무엇이 되는지. 라벨만으로는 안 읽혀서 아래에 한 줄 붙인다. */
+  hint: string
   optional?: boolean
   /**
    * 이 슬롯에 넣을 수 있는 컬럼 타입. 나머지는 후보에서 뺀다.
@@ -34,10 +36,16 @@ export type MappingSlot = {
  */
 const MAX_SERIES = 8
 
-const VALUE: MappingSlot = { key: "value", label: "값", accepts: ["number"] }
+const VALUE: MappingSlot = {
+  key: "value",
+  label: "값",
+  hint: "크기가 될 숫자",
+  accepts: ["number"],
+}
 const CATEGORY: MappingSlot = {
   key: "category",
   label: "범주",
+  hint: "막대·조각 하나하나가 될 기준",
   accepts: ["category", "date"],
   // 자동 선택이 극단을 피하게 한다. ID처럼 행마다 다른 컬럼은 막대 수천 개가 되고,
   // 값이 하나뿐인 컬럼은 막대 하나짜리 차트가 된다(둘 다 아무것도 못 보여준다).
@@ -46,6 +54,7 @@ const CATEGORY: MappingSlot = {
 const SERIES: MappingSlot = {
   key: "series",
   label: "분할",
+  hint: "색으로 한 번 더 나눌 기준",
   optional: true,
   accepts: ["category", "date"],
   maxDistinct: MAX_SERIES,
@@ -56,20 +65,30 @@ const SERIES: MappingSlot = {
  * 범주도 정당하다. 다만 날짜·숫자를 먼저 고른다. 지역처럼 순서 없는 범주를 선으로 이으면
  * 데이터에 없는 추세를 만들어낸다.
  */
-const ORDERED_X: MappingSlot = { key: "x", label: "X축", accepts: ["date", "number", "category"] }
-const NUMERIC_Y: MappingSlot = { key: "y", label: "Y축", accepts: ["number"] }
+const ORDERED_X: MappingSlot = {
+  key: "x",
+  label: "X축",
+  hint: "가로로 늘어놓을 순서",
+  accepts: ["date", "number", "category"],
+}
+const NUMERIC_Y: MappingSlot = {
+  key: "y",
+  label: "Y축",
+  hint: "세로 높이가 될 숫자",
+  accepts: ["number"],
+}
 
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   bar: [CATEGORY, VALUE, SERIES],
   hbar: [CATEGORY, VALUE, SERIES],
   // 무엇으로 쌓을지가 없으면 그냥 막대라서 필수다.
-  stacked: [CATEGORY, VALUE, { ...SERIES, label: "누적 기준", optional: false }],
+  stacked: [CATEGORY, VALUE, { ...SERIES, label: "누적 기준", hint: "쌓아 올릴 기준", optional: false }],
   line: [ORDERED_X, NUMERIC_Y, SERIES],
   area: [ORDERED_X, NUMERIC_Y, SERIES],
   // 산점도는 두 축이 모두 수치여야 관계를 볼 수 있다. 시리즈는 3개까지 —
   // 아무 두 점이나 나란히 놓일 수 있어서 4개부터 색 구분이 무너진다(CLAUDE.md).
   scatter: [
-    { key: "x", label: "X축", accepts: ["number"] },
+    { key: "x", label: "X축", hint: "가로 위치가 될 숫자", accepts: ["number"] },
     NUMERIC_Y,
     { ...SERIES, maxDistinct: 3 },
   ],

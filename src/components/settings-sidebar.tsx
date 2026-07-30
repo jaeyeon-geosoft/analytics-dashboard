@@ -35,11 +35,15 @@ function rowSummary(cells: string[]): string {
   return filled.length > 3 ? `${summary}…` : summary
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+/** 라벨은 이름만 대고, 설명은 그 아래 한 줄이 맡는다. 둘을 한 덩어리로 붙여 쓰지 않는다. */
+function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
-    <h2 className="mb-2.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-      {children}
-    </h2>
+    <div className="mb-2.5">
+      <h2 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+        {children}
+      </h2>
+      {hint && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p>}
+    </div>
   )
 }
 
@@ -74,7 +78,7 @@ function MappingSelect({
   const disabled = candidates.length === 0
 
   return (
-    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {slot.label}
       </Label>
@@ -117,6 +121,8 @@ function MappingSelect({
           ))}
         </SelectContent>
       </Select>
+      {/* 라벨만으로는 이 슬롯이 차트에서 뭐가 되는지 알 수 없다. */}
+      <p className="col-start-2 text-[11px] leading-snug text-muted-foreground">{slot.hint}</p>
     </div>
   )
 }
@@ -206,7 +212,7 @@ export function SettingsSidebar({
 
             {/* 헤더가 1행이 아닌 파일(제목 줄이 위에 붙은 리포트)을 위한 선택. */}
             {data && data.preview.length > 1 && (
-              <div className="mt-2 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
+              <div className="mt-2 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
                 <Label htmlFor="header-row" className="text-xs text-muted-foreground">
                   헤더 행
                 </Label>
@@ -229,6 +235,9 @@ export function SettingsSidebar({
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="col-start-2 text-[11px] leading-snug text-muted-foreground">
+                  컬럼 이름이 적힌 줄. 제목 줄이 위에 붙은 파일만 바꾸면 됩니다.
+                </p>
               </div>
             )}
 
@@ -256,7 +265,9 @@ export function SettingsSidebar({
 
           {columns.length > 0 && (
             <section>
-              <SectionLabel>컬럼 {columns.length}개</SectionLabel>
+              <SectionLabel hint="각 컬럼에 어떤 값이 들었는지. 틀렸으면 바꾸세요 — 아래 선택지가 따라 바뀝니다.">
+                컬럼 {columns.length}개
+              </SectionLabel>
               <ColumnList columns={columns} onTypeChange={onColumnTypeChange} />
             </section>
           )}
@@ -271,7 +282,7 @@ export function SettingsSidebar({
           </section>
 
           <section>
-            <SectionLabel>매핑</SectionLabel>
+            <SectionLabel hint="어느 컬럼을 차트의 어디에 놓을지 고릅니다.">매핑</SectionLabel>
             <div className="space-y-2">
               {MAPPING_SLOTS[chartType].map((slot) => (
                 <MappingSelect
@@ -284,7 +295,7 @@ export function SettingsSidebar({
               ))}
               {/* 산점도는 행 하나가 점 하나라 묶을 일이 없다. */}
               {chartType !== "scatter" && (
-                <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
+                <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
                   <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
                     집계
                   </Label>
@@ -304,6 +315,9 @@ export function SettingsSidebar({
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="col-start-2 text-[11px] leading-snug text-muted-foreground">
+                    같은 범주가 여러 줄일 때 합칠 방법
+                  </p>
                 </div>
               )}
             </div>
