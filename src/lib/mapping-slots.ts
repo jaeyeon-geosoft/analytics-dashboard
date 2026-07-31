@@ -6,7 +6,7 @@ import type { ColumnInfo, ColumnType } from "@/lib/infer-types"
  * 종류를 바꿔도 선택한 컬럼이 그대로 남는다. 반대로 `category`와 `x`는 다른 역할이라
  * 서로 넘어가지 않는다.
  */
-export type MappingKey = "category" | "value" | "series" | "x" | "y"
+export type MappingKey = "category" | "value" | "series" | "x" | "y" | "y2"
 
 export type Mapping = Partial<Record<MappingKey, string>>
 
@@ -77,13 +77,30 @@ const NUMERIC_Y: MappingSlot = {
   hint: "세로 높이가 될 숫자",
   accepts: ["number"],
 }
+/**
+ * 선 차트에만 있는 두 번째 값. 왼쪽과 스케일이 다른 지표(매출 vs 전환율)를 한 화면에서
+ * 보려고 오른쪽에 축을 하나 더 세운다.
+ *
+ * 두 축의 눈금을 어떻게 맞추느냐에 따라 선이 교차하는 자리가 달라져서, 데이터에 없는
+ * 상관관계가 보일 수 있다. 그래서 **두 축 모두 0에서 시작**하고, 범례에 (좌)/(우)를
+ * 적고, 축 이름 옆에 그 선의 색을 붙인다. 분할·개수 집계와는 함께 쓰지 않는다.
+ */
+const RIGHT_Y: MappingSlot = {
+  key: "y2",
+  label: "Y축(우)",
+  hint: "오른쪽 축에 겹쳐 그릴 다른 숫자",
+  optional: true,
+  accepts: ["number"],
+}
 
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   bar: [CATEGORY, VALUE, SERIES],
   hbar: [CATEGORY, VALUE, SERIES],
   // 무엇으로 쌓을지가 없으면 그냥 막대라서 필수다.
   stacked: [CATEGORY, VALUE, { ...SERIES, label: "누적 기준", hint: "쌓아 올릴 기준", optional: false }],
-  line: [ORDERED_X, NUMERIC_Y, SERIES],
+  // 축이 둘이 될 수 있으므로 왼쪽도 이름에 자리를 밝힌다. 영역은 채움이 서로를 가려서
+  // 오른쪽 축을 주지 않는다.
+  line: [ORDERED_X, { ...NUMERIC_Y, label: "Y축(좌)", hint: "왼쪽 축 높이가 될 숫자" }, RIGHT_Y, SERIES],
   area: [ORDERED_X, NUMERIC_Y, SERIES],
   // 산점도는 두 축이 모두 수치여야 관계를 볼 수 있다. 시리즈는 3개까지 —
   // 아무 두 점이나 나란히 놓일 수 있어서 4개부터 색 구분이 무너진다(CLAUDE.md).
@@ -93,6 +110,47 @@ export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
     { ...SERIES, maxDistinct: 3 },
   ],
   pie: [CATEGORY, VALUE],
+}
+
+/**
+ * 지금 실제로 오른쪽 축에 그려질 컬럼. 집계·카드 헤더·사이드바가 **같은 규칙**을 봐야
+ * 고른 컬럼이 조용히 무시되는 일이 없다.
+ *
+ * - 분할과 함께면 시리즈가 두 갈래(컬럼 2개 × 범주 N개)로 늘어나 색이 모자란다.
+ * - 개수 집계는 값 컬럼을 세지 않아서 두 선이 똑같아진다.
+ */
+export function rightValueColumn(
+  chartType: ChartType,
+  mapping: Mapping,
+  counting: boolean
+): string | undefined {
+  if (chartType !== "line") return undefined
+  if (mapping.series || counting) return undefined
+  return mapping.y2
+}
+
+/**
+ * 이 슬롯이 지금 잠겨 있다면 그 이유. 트리거에 그대로 띄운다 — 비활성만 시켜두면
+ * 왜 못 고르는지 알 수가 없다. 잠긴 동안에도 고른 값은 들고 있다가 잠금이 풀리면
+ * 되살아난다(차트 종류를 오갈 때와 같은 방식).
+ */
+export function lockedReason(
+  slot: MappingSlot,
+  chartType: ChartType,
+  mapping: Mapping,
+  counting: boolean
+): string | null {
+  // 트리거 폭이 좁다. 이유는 "무엇이 막고 있는지"만 같은 길이로 적는다.
+  if (slot.key === "y2") {
+    if (counting) return "개수 집계 중"
+    if (mapping.series) return "분할 사용 중"
+    return null
+  }
+  // 잠자는 y2가 막대의 분할까지 잠그면 안 된다. 실제로 그려지고 있을 때만 잠근다.
+  if (slot.key === "series" && rightValueColumn(chartType, mapping, counting)) {
+    return "Y축(우) 사용 중"
+  }
+  return null
 }
 
 export function candidatesFor(slot: MappingSlot, columns: ColumnInfo[]): ColumnInfo[] {

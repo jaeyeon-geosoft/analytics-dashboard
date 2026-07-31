@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils"
 import {
   OTHER_LABEL,
   type ChartFrame,
+  type ChartSeries,
   type ScatterFrame,
 } from "@/lib/aggregate"
 
@@ -64,12 +65,14 @@ function compact(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2)
 }
 
-function configFor(series: { key: string; label: string }[]): ChartConfig {
+function configFor(series: ChartSeries[]): ChartConfig {
   return Object.fromEntries(
     series.map((entry, index) => [
       entry.key,
       {
-        label: entry.label,
+        // 축이 둘이면 범례가 어느 축의 선인지까지 말해야 한다. 색만으로는 왼쪽 눈금을
+        // 읽어야 할지 오른쪽을 읽어야 할지 알 수 없다.
+        label: entry.axis ? `${entry.label} (${entry.axis === "right" ? "우" : "좌"})` : entry.label,
         color: series.length === 1 ? SINGLE : SLOTS[index],
       },
     ]),
@@ -270,14 +273,56 @@ function usePlotWindow(count: number, vertical: boolean): PlotWindow {
  *
  * `plot`을 주면 창 스크롤바가 붙는다 — 가로 막대는 오른쪽, 나머지는 아래.
  */
+/**
+ * 세로로 세운 값 축 이름.
+ *
+ * 글자 수로 자르면 공간이 남는데도 잘린다 — 축 이름에 붙는 "(앞 … 공통)"이 통째로
+ * 날아갔다. 세로쓰기라 넘침도 세로로 나므로 CSS에 맡긴다.
+ *
+ * `color`는 축이 둘일 때만 들어온다. 이름 옆의 색 마크가 "이 축은 이 선의 것"을
+ * 잇는다 — 글자 자체는 시리즈 색으로 칠하지 않는다(CLAUDE.md).
+ */
+function AxisName({
+  label,
+  color,
+  side,
+}: {
+  label: string
+  color?: string
+  side: "left" | "right"
+}) {
+  return (
+    <div className="flex max-h-full min-h-0 shrink-0 flex-col items-center justify-center gap-1.5 self-center">
+      {color && (
+        <span className="h-3 w-0.5 shrink-0 rounded-full" style={{ background: color }} />
+      )}
+      <div
+        className={cn(
+          "min-h-0 overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-muted-foreground [writing-mode:vertical-rl]",
+          side === "left" && "rotate-180"
+        )}
+        title={label}
+      >
+        {label}
+      </div>
+    </div>
+  )
+}
+
 function AxisFrame({
   xLabel,
   yLabel,
+  yRightLabel,
+  colors,
   plot,
   children,
 }: {
   xLabel: string
   yLabel: string
+  /** 오른쪽 축 이름. 이중 축(선 차트)에서만 들어온다. */
+  yRightLabel?: string
+  /** 이중 축일 때 두 축 이름에 붙일 선 색 */
+  colors?: [string, string]
   /** 없으면 스크롤 없이 그대로 채운다(산점도) */
   plot?: PlotWindow
   children: React.ReactNode
@@ -285,16 +330,7 @@ function AxisFrame({
   return (
     <div className="absolute inset-0 flex flex-col">
       <div className="flex min-h-0 flex-1 gap-1">
-        {/*
-          글자 수로 자르면 공간이 남는데도 잘린다 — 축 이름에 붙는 "(앞 … 공통)"이
-          통째로 날아갔다. 세로쓰기라 넘침도 세로로 나므로 CSS에 맡긴다.
-        */}
-        <div
-          className="max-h-full shrink-0 self-center overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-muted-foreground [writing-mode:vertical-rl] rotate-180"
-          title={yLabel}
-        >
-          {yLabel}
-        </div>
+        <AxisName label={yLabel} color={colors?.[0]} side="left" />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 min-w-0 flex-1">
             <div
@@ -308,6 +344,7 @@ function AxisFrame({
           </div>
           {plot && !plot.vertical && plot.bar}
         </div>
+        {yRightLabel && <AxisName label={yRightLabel} color={colors?.[1]} side="right" />}
       </div>
       <p
         className="mt-1 shrink-0 truncate text-center text-[11px] text-muted-foreground"
@@ -323,15 +360,15 @@ function AxisFrame({
  * 값 축의 상한. 창을 옮길 때마다 축이 다시 잡히면 창끼리 비교가 거짓말이 되므로
  * **보이는 창이 아니라 전체**를 기준으로 고정한다.
  */
-function peakValue(frame: ChartFrame, stacked: boolean): number {
+function peakValue(frame: ChartFrame, stacked: boolean, series: ChartSeries[]): number {
   let peak = 0
   for (const row of frame.rows) {
     if (stacked) {
       let total = 0
-      for (const entry of frame.series) total += Number(row[entry.key]) || 0
+      for (const entry of series) total += Number(row[entry.key]) || 0
       if (total > peak) peak = total
     } else {
-      for (const entry of frame.series) {
+      for (const entry of series) {
         const value = Number(row[entry.key]) || 0
         if (value > peak) peak = value
       }
@@ -377,6 +414,8 @@ function CartesianView({
   const horizontal = chartType === "hbar"
   const stacked = chartType === "stacked"
   const timeline = chartType === "line" || chartType === "area"
+  // 오른쪽 축에 놓인 시리즈가 있으면 이중 축이다(선 차트에서만 생긴다).
+  const dual = frame.series.some((entry) => entry.axis === "right")
 
   const plot = usePlotWindow(frame.rows.length, horizontal)
 
@@ -394,9 +433,21 @@ function CartesianView({
     [labeled, plot.start, plot.size]
   )
 
-  // 음수가 섞이면 0을 바닥으로 잡을 수 없다. 그때는 Recharts에 맡긴다.
-  const peak = useMemo(() => niceCeil(peakValue(frame, stacked)), [frame, stacked])
-  const valueDomain: [number, number] | undefined = peak > 0 ? [0, peak] : undefined
+  // 축이 둘이면 최대값도 축마다 따로 잡는다 — 한 스케일로 묶으면 오른쪽 축을 세운
+  // 이유가 없어진다. 대신 **둘 다 0에서 시작**한다. 두 축을 임의로 어긋나게 맞추면
+  // 선이 교차하는 자리가 달라져서 데이터에 없는 상관관계가 보인다.
+  const [valueDomain, rightDomain] = useMemo(() => {
+    // 음수가 섞이면 0을 바닥으로 잡을 수 없다. 그때는 Recharts에 맡긴다.
+    const domainOf = (subset: ChartSeries[]): [number, number] | undefined => {
+      const peak = niceCeil(peakValue(frame, stacked, subset))
+      return peak > 0 ? [0, peak] : undefined
+    }
+    if (!dual) return [domainOf(frame.series), undefined]
+    return [
+      domainOf(frame.series.filter((entry) => entry.axis !== "right")),
+      domainOf(frame.series.filter((entry) => entry.axis === "right")),
+    ]
+  }, [frame, stacked, dual])
 
   const prefix = useMemo(() => sharedPrefix(frame.rows), [frame.rows])
   const category = (value: string, max: number) => truncate(String(value).slice(prefix.length), max)
@@ -419,7 +470,13 @@ function CartesianView({
   if (chartType === "line" || chartType === "area") {
     const Chart = chartType === "line" ? LineChart : AreaChart
     return (
-      <AxisFrame xLabel={categoryLabel} yLabel={frame.yLabel} plot={plot}>
+      <AxisFrame
+        xLabel={categoryLabel}
+        yLabel={frame.yLabel}
+        yRightLabel={frame.y2Label}
+        colors={dual ? [SLOTS[0], SLOTS[1]] : undefined}
+        plot={plot}
+      >
         <ChartContainer config={config} className="absolute inset-0 aspect-auto">
           <Chart
             data={rows}
@@ -434,6 +491,11 @@ function CartesianView({
               axisLine={{ stroke: GRID }}
               tickFormatter={(value: string) => category(value, acrossMax)}
             />
+            {/*
+              왼쪽 축은 id를 주지 않는다 — Recharts의 기본 id(0)를 그대로 써야
+              `CartesianGrid`(역시 기본 id를 본다)의 가로 격자선이 살아 있다. 오른쪽만
+              별도 id를 갖고, 격자선은 왼쪽 눈금을 따른다.
+            */}
             <YAxis
               tick={AXIS_TICK}
               tickLine={false}
@@ -442,6 +504,18 @@ function CartesianView({
               domain={valueDomain}
               tickFormatter={compact}
             />
+            {dual && (
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={AXIS_TICK}
+                tickLine={false}
+                axisLine={false}
+                width={52}
+                domain={rightDomain}
+                tickFormatter={compact}
+              />
+            )}
             {/* 선·영역은 크로스헤어 + 한 번에 전 시리즈를 읽는 툴팁 */}
             <ChartTooltip
               cursor={{ stroke: GRID, strokeWidth: 1 }}
@@ -454,6 +528,7 @@ function CartesianView({
                   key={entry.key}
                   type="monotone"
                   dataKey={entry.key}
+                  yAxisId={entry.axis === "right" ? "right" : undefined}
                   stroke={multi ? SLOTS[index] : SINGLE}
                   strokeWidth={2}
                   strokeLinecap="round"

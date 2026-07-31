@@ -20,6 +20,7 @@ import { COLUMN_TYPE_LABELS, type ColumnInfo, type ColumnType } from "@/lib/infe
 import {
   MAPPING_SLOTS,
   candidatesFor,
+  lockedReason,
   type Mapping,
   type MappingKey,
   type MappingSlot,
@@ -89,6 +90,12 @@ function MappingGuide({ chartType }: { chartType: ChartType }) {
           </div>
         ))}
       </dl>
+      {/* 잠기는 이유는 트리거에도 한마디씩 뜨지만, 규칙 자체는 여기서 한 번에 말한다. */}
+      {chartType === "line" && (
+        <p className="mt-2.5 border-t border-background/20 pt-2.5 text-background/70">
+          Y축(우)는 분할·개수 집계와 함께 쓸 수 없습니다. 한쪽을 비우면 다시 열립니다.
+        </p>
+      )}
     </>
   )
 }
@@ -123,16 +130,22 @@ function MappingSelect({
   slot,
   columns,
   value,
+  locked,
   onValueChange,
 }: {
   slot: MappingSlot
   columns: ColumnInfo[]
   value?: string
+  /**
+   * 다른 슬롯 때문에 지금 못 쓰는 이유. 있으면 그 문구를 트리거에 띄우고 잠근다 —
+   * 고른 값은 지우지 않고 들고 있다가 잠금이 풀리면 되살아난다.
+   */
+  locked?: string | null
   onValueChange: (column?: string) => void
 }) {
   const id = `mapping-${slot.key}`
   const candidates = candidatesFor(slot, columns)
-  const disabled = candidates.length === 0
+  const disabled = candidates.length === 0 || Boolean(locked)
 
   return (
     <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
@@ -141,7 +154,11 @@ function MappingSelect({
       </Label>
       <Select
         // 선택 슬롯은 비었을 때도 "없음"이 실제로 선택된 상태로 둔다.
-        value={value ? columnValue(value) : slot.optional ? NONE_VALUE : undefined}
+        // 잠겼을 때만은 값을 비워 이유가 보이게 한다 — 값이 들어 있으면 그게 그려지는
+        // 줄 알게 된다.
+        value={
+          locked ? undefined : value ? columnValue(value) : slot.optional ? NONE_VALUE : undefined
+        }
         onValueChange={(next) =>
           onValueChange(next === NONE_VALUE ? undefined : next.slice("col:".length))
         }
@@ -150,11 +167,13 @@ function MappingSelect({
         <SelectTrigger id={id} size="sm" className="w-full min-w-0 font-mono text-xs">
           <SelectValue
             placeholder={
-              disabled
-                ? emptyReason(slot, columns.length > 0)
-                : slot.optional
-                  ? "없음"
-                  : "컬럼 선택"
+              locked
+                ? locked
+                : disabled
+                  ? emptyReason(slot, columns.length > 0)
+                  : slot.optional
+                    ? "없음"
+                    : "컬럼 선택"
             }
           />
         </SelectTrigger>
@@ -376,6 +395,7 @@ export function SettingsSidebar({
                   slot={slot}
                   columns={columns}
                   value={mapping[slot.key]}
+                  locked={lockedReason(slot, chartType, mapping, aggregation === "count")}
                   onValueChange={(column) => onMappingChange(slot.key, column)}
                 />
               ))}

@@ -1,6 +1,11 @@
 import type { ChartType } from "@/components/chart-type-picker"
 import { toDateOrder, toNumber, type ColumnInfo } from "@/lib/infer-types"
-import { MAPPING_SLOTS, type Mapping, type MappingKey } from "@/lib/mapping-slots"
+import {
+  MAPPING_SLOTS,
+  rightValueColumn,
+  type Mapping,
+  type MappingKey,
+} from "@/lib/mapping-slots"
 
 export type Aggregation = "sum" | "avg" | "count"
 
@@ -15,7 +20,12 @@ const MAX_SLICES = 6
 
 export const OTHER_LABEL = "기타"
 
-export type ChartSeries = { key: string; label: string }
+export type ChartSeries = {
+  key: string
+  label: string
+  /** 선 차트에서 두 지표를 나란히 볼 때만. 없으면 축이 하나다. */
+  axis?: "left" | "right"
+}
 
 export type ChartFrame = {
   /** `{ x: 범주/축값, [series.key]: 집계값 }` */
@@ -23,6 +33,8 @@ export type ChartFrame = {
   series: ChartSeries[]
   xLabel: string
   yLabel: string
+  /** 오른쪽 축 이름. 축이 하나면 없다. */
+  y2Label?: string
   /** 원형에서 "기타"로 접힌 범주 수. 다른 종류는 자르지 않으므로 항상 0 */
   folded: number
 }
@@ -80,8 +92,14 @@ export function buildChartFrame(
   if (aggregation !== "count" && !valueColumn) return null
 
   const seriesColumn = mapping.series
-  // 범주 → (시리즈 이름 → 값들)
-  const buckets = new Map<string, Map<string, { values: number[]; count: number }>>()
+  // 값 컬럼이 둘이면 그 둘이 곧 시리즈가 된다. 분할과는 함께 쓰지 않으므로
+  // (사이드바에서도 잠긴다) 시리즈가 늘어나는 길은 언제나 한 갈래다.
+  const rightColumn = rightValueColumn(chartType, mapping, aggregation === "count")
+  const valueColumns = valueColumn ? [valueColumn, ...(rightColumn ? [rightColumn] : [])] : []
+  const dual = valueColumns.length > 1
+
+  // 범주 → (시리즈 이름 → 값들). `values[i]`가 `valueColumns[i]`의 값이다.
+  const buckets = new Map<string, Map<string, { values: number[][]; count: number }>>()
   const seriesNames = new Set<string>()
 
   for (const row of rows) {
@@ -98,35 +116,44 @@ export function buildChartFrame(
     }
     let cell = bucket.get(seriesName)
     if (!cell) {
-      cell = { values: [], count: 0 }
+      cell = { values: valueColumns.map(() => []), count: 0 }
       bucket.set(seriesName, cell)
     }
     cell.count += 1
-    if (valueColumn) {
-      const value = toNumber(row[valueColumn] ?? "")
-      if (value !== null) cell.values.push(value)
+    for (let index = 0; index < valueColumns.length; index += 1) {
+      const value = toNumber(row[valueColumns[index]] ?? "")
+      if (value !== null) cell.values[index].push(value)
     }
   }
 
   if (buckets.size === 0) return null
 
   // key는 s0, s1… 로 만든다. 시리즈 이름을 그대로 쓰면 "x"라는 이름의 시리즈가
-  // 범주 필드를 덮어쓴다.
-  const resolved = [...seriesNames]
-    .sort((a, b) => a.localeCompare(b))
-    .map((name, index) => ({
-      key: `s${index}`,
-      label: name || (valueColumn ?? "개수"),
-      name,
-    }))
-  const series: ChartSeries[] = resolved.map(({ key, label }) => ({ key, label }))
+  // 범주 필드를 덮어쓴다. `slot`은 그 시리즈가 어느 값 컬럼에서 나왔는지.
+  const resolved: (ChartSeries & { name: string; slot: number })[] = dual
+    ? valueColumns.map((column, index) => ({
+        key: `s${index}`,
+        label: column,
+        axis: index === 0 ? ("left" as const) : ("right" as const),
+        name: "",
+        slot: index,
+      }))
+    : [...seriesNames]
+        .sort((a, b) => a.localeCompare(b))
+        .map((name, index) => ({
+          key: `s${index}`,
+          label: name || (valueColumn ?? "개수"),
+          name,
+          slot: 0,
+        }))
+  const series: ChartSeries[] = resolved.map(({ key, label, axis }) => ({ key, label, axis }))
 
   let entries = [...buckets.entries()].map(([x, bucket]) => {
     const row: Record<string, string | number> = { x }
     let total = 0
-    for (const { key, name } of resolved) {
+    for (const { key, name, slot } of resolved) {
       const cell = bucket.get(name)
-      const value = cell ? reduce(cell.values, aggregation, cell.count) : 0
+      const value = cell ? reduce(cell.values[slot], aggregation, cell.count) : 0
       row[key] = value
       total += value
     }
@@ -161,6 +188,7 @@ export function buildChartFrame(
     series,
     xLabel: xColumn,
     yLabel: valueColumn ? `${valueColumn} ${AGGREGATION_LABELS[aggregation]}` : "행 개수",
+    y2Label: rightColumn ? `${rightColumn} ${AGGREGATION_LABELS[aggregation]}` : undefined,
     folded,
   }
 }

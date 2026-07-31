@@ -20,7 +20,7 @@ import {
 } from "@/lib/aggregate"
 import { MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
 import type { ColumnInfo } from "@/lib/infer-types"
-import { MAPPING_SLOTS } from "@/lib/mapping-slots"
+import { MAPPING_SLOTS, rightValueColumn } from "@/lib/mapping-slots"
 import { MAX_ROWS, type ParsedFile } from "@/lib/parse-file"
 import { cn } from "@/lib/utils"
 
@@ -226,17 +226,24 @@ function DatasetBar({
 
 /**
  * 카드가 무엇을 그리고 있는지 한 줄로. 네 장이 나란히 서면 종류만으로는 구분이 안 된다.
- * 분할은 축이 아니므로 화살표에 끼우지 않고 뒤에 덧붙인다.
+ * 분할과 오른쪽 축은 X→Y의 흐름이 아니므로 화살표에 끼우지 않고 뒤에 덧붙인다.
  */
-function describe(spec: ChartSpec): { axes: string; series?: string } {
+function describe(spec: ChartSpec): { axes: string; aside?: string } {
   const slots = MAPPING_SLOTS[spec.chartType]
   const axes = slots
-    .filter((slot) => slot.key !== "series")
+    .filter((slot) => slot.key !== "series" && slot.key !== "y2")
     .map((slot) => spec.mapping[slot.key])
     .filter(Boolean)
     .join(" → ")
+
+  const right = rightValueColumn(spec.chartType, spec.mapping, spec.aggregation === "count")
   const hasSeries = slots.some((slot) => slot.key === "series")
-  return { axes, series: hasSeries ? spec.mapping.series : undefined }
+  const aside = [
+    right && `${right}(우)`,
+    hasSeries ? spec.mapping.series : undefined,
+  ].filter(Boolean)
+
+  return { axes, aside: aside.length > 0 ? aside.join(" · ") : undefined }
 }
 
 function ChartCard({
@@ -330,7 +337,7 @@ function ChartCard({
   ].filter(Boolean)
 
   const drawable = Boolean(frame ?? scatter)
-  const { axes, series } = describe(spec)
+  const { axes, aside } = describe(spec)
 
   return (
     // 카드 아무 데나 누르면 사이드바가 그 카드를 편집한다. 키보드로는 번호 배지가 그 역할.
@@ -365,7 +372,7 @@ function ChartCard({
             ) : (
               <span className="text-muted-foreground">컬럼 선택 전</span>
             )}
-            {series && <span className="font-mono text-muted-foreground"> · {series}</span>}
+            {aside && <span className="font-mono text-muted-foreground"> · {aside}</span>}
             {/* 집계 방식은 화면에 밝힌다. 몇 줄이 한 마크로 접혔는지가 안 보이면 오독한다. */}
             {chartType !== "scatter" && (
               <span className="text-muted-foreground"> ({AGGREGATION_LABELS[aggregation]})</span>
