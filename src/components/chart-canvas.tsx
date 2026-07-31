@@ -21,6 +21,25 @@ import type { ColumnInfo } from "@/lib/infer-types"
 import { MAPPING_SLOTS, type Mapping } from "@/lib/mapping-slots"
 import { MAX_ROWS, type ParsedFile } from "@/lib/parse-file"
 
+/**
+ * 계산을 시작하기 **전에** 표시를 띄울지 정한다.
+ *
+ * 시작한 뒤에는 판단할 수 없다 — 계산이 한 덩어리로 메인스레드를 잡아서 그 사이엔
+ * 타이머도 안 돈다. "느려지면 그때 띄우자"가 성립하지 않는다.
+ *
+ * 비용은 거의 전부 **그릴 마크 수**다. 막대·선·영역은 창에 들어가는 만큼(수십 개)만
+ * 그려서 늘 빠르다(범주 66,793개 재계산이 87ms). 산점도만 점을 창으로 줄이지 않고
+ * 그대로 그려서 유일하게 느리다 — 점 3,000개에 389ms, dev 빌드에서는 그 몇 배다.
+ *
+ * 빠른데 띄우면 오히려 고장 나 보인다. 가상화 전 막대 차트에서 표시가 66ms만 떠
+ * 있었는데, 1초에 한 바퀴 도는 스피너는 그동안 24도밖에 못 돌아 멈춘 것처럼 보였다.
+ */
+const SLOW_POINTS = 1_500
+
+function looksSlow(chartType: ChartType, rows: number): boolean {
+  return chartType === "scatter" && rows > SLOW_POINTS
+}
+
 export type CanvasState =
   | { status: "empty" }
   | { status: "loading"; fileName: string }
@@ -147,7 +166,9 @@ function ReadyCanvas({
     frame: ChartFrame | null
     scatter: ScatterFrame | null
   } | null>(null)
-  const busy = built?.request !== request
+  const pending = built?.request !== request
+
+  const busy = pending && looksSlow(chartType, data.rows.length)
 
   useEffect(() => {
     let cancelled = false
@@ -241,7 +262,9 @@ function ReadyCanvas({
         {/* 계산 중에도 이전 차트를 남겨둔다. 비워버리면 화면이 튄다. */}
         <div className={busy ? "pointer-events-none h-full opacity-40" : "h-full"}>
           {!drawable ? (
-            !busy && (
+            // 아직 계산 전인데 "그릴 게 없다"고 하면 안 된다. 표시를 안 띄우는
+            // 빠른 경우에도 이 문구가 한 프레임 스쳐서는 안 되므로 pending으로 막는다.
+            !pending && (
               <p className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
                 {missing.length > 0
                   ? `${missing.join(", ")}을(를) 고르면 차트가 그려집니다.`
