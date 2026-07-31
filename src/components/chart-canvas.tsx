@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { FileDropzone } from "@/components/file-dropzone"
 import { ChartView } from "@/components/chart-view"
@@ -280,7 +281,7 @@ function ReadyCanvas({
         {busy && (
           <div className="absolute inset-0 flex items-center justify-center">
             <p className="flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs text-muted-foreground shadow-sm">
-              <Loader2 className="size-3.5 animate-spin" />
+              <Spinner className="size-3.5" aria-label="차트를 그리는 중" />
               차트를 그리는 중…
             </p>
           </div>
