@@ -10,7 +10,9 @@
 - 리포트 생성기가 아니다. 인터랙티브 탐색이 목적.
 
 **현재 어디까지 됐는지는 [PROGRESS.md](PROGRESS.md)를 먼저 볼 것.** 화면 구조, 파서가 붙을
-자리, 미결정 사항이 거기 있다.
+자리, 미결정 사항이 거기 있다. **왜 그렇게 됐는지**(근거·측정치·틀렸던 접근·함정)는
+[docs/lessons.md](docs/lessons.md)에 따로 있다 — 규칙을 바꾸려 하거나 "왜 이렇게 돼 있지?"가
+나올 때 연다.
 
 ## 절대 원칙
 
@@ -33,7 +35,7 @@
 - **Vite 8** + **React 19** + **TypeScript 6**
 - **Tailwind CSS 4** — `@tailwindcss/vite` 플러그인 방식, `tailwind.config` 파일 없음. 테마는 전부 `src/index.css`의 CSS 변수.
 - **shadcn/ui** — style `radix-rhea`, baseColor `neutral`, 아이콘 `lucide-react`
-- **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 렌더러는 `src/components/chart-view.tsx` 한 곳이고, Recharts에서 반복해서 걸리는 함정은 [PROGRESS.md](PROGRESS.md)의 표에 모아뒀다.
+- **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 렌더러는 `src/components/chart-view.tsx` 한 곳이고, Recharts에서 반복해서 걸리는 함정은 [docs/lessons.md](docs/lessons.md#recharts에서-걸린-것들)의 표에 모아뒀다.
 - **CSV/TSV 파서: papaparse** — `src/lib/parse-file.ts`에서만 쓴다. 순수 파서라 네트워크 호출 없음.
 - **Excel 파서: SheetJS(`xlsx`)** — npm 레지스트리 버전은 `0.18.5`에서 멈췄고 알려진 취약점이 있어서, **벤더 CDN 타르볼로 고정**되어 있다(`package.json`의 URL). 빌드 시점 설치일 뿐 런타임 네트워크 호출은 없다. 버전을 올릴 때도 같은 방식으로.
 
@@ -102,7 +104,7 @@ npm run preview   # 빌드 결과 미리보기
 - **표시가 멈춰 보이면 블로킹 탓으로 넘겨짚지 말 것.** 실제로 겪은 원인은 둘 다 다른 것이었다 — 무한 리렌더로 **리마운트**되어 애니메이션이 0도에서 계속 재시작한 것, 그리고 **노출이 너무 짧은 것**(66ms면 24도밖에 못 돈다). 이 둘부터 확인할 것.
 - **블로킹 중 화면 상태를 스크린샷으로 확인하려 하지 말 것.** 메인스레드가 막히면 `Page.captureScreenshot`이 타임아웃난다. 성공한 스크린샷은 전부 블록이 끝난 뒤 화면이라, 그걸로 "멈췄다/돈다"를 판정하면 양쪽 다 틀린 결론이 나온다(실제로 두 번 다 틀렸다).
 - **상한에 걸려 뺀 것은 반드시 알릴 것** (원형 조각 6개, 산점도 점 3000개). 원형은 잘라내지 말고 "기타"로 접어야 합이 유지된다.
-- Recharts에서 반복해서 걸리는 함정(`aspect-video`, 툴팁 `formatter`, 원형 라벨 색, `ZAxis`)은 [PROGRESS.md](PROGRESS.md)의 표에 정리돼 있다. 차트를 손대기 전에 볼 것.
+- Recharts에서 반복해서 걸리는 함정(`aspect-video`, 툴팁 `formatter`, 원형 라벨 색, `ZAxis`)은 [docs/lessons.md](docs/lessons.md#recharts에서-걸린-것들)의 표에 정리돼 있다. 차트를 손대기 전에 볼 것.
 
 ## 코드 컨벤션
 
