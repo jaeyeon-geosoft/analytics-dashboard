@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Plus, X } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -14,13 +15,14 @@ import {
   AGGREGATION_LABELS,
   buildChartFrame,
   buildScatterFrame,
-  type Aggregation,
   type ChartFrame,
   type ScatterFrame,
 } from "@/lib/aggregate"
+import { MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
 import type { ColumnInfo } from "@/lib/infer-types"
-import { MAPPING_SLOTS, type Mapping } from "@/lib/mapping-slots"
+import { MAPPING_SLOTS } from "@/lib/mapping-slots"
 import { MAX_ROWS, type ParsedFile } from "@/lib/parse-file"
+import { cn } from "@/lib/utils"
 
 /**
  * 계산을 시작하기 **전에** 표시를 띄울지 정한다.
@@ -60,17 +62,21 @@ function CanvasFrame({ title, children }: { title?: React.ReactNode; children: R
 
 export function ChartCanvas({
   state,
-  chartType,
-  mapping,
-  aggregation,
+  charts,
+  activeId,
   columns,
+  onSelectChart,
+  onAddChart,
+  onRemoveChart,
   onFile,
 }: {
   state: CanvasState
-  chartType: ChartType
-  mapping: Mapping
-  aggregation: Aggregation
+  charts: ChartSpec[]
+  activeId: string
   columns: ColumnInfo[]
+  onSelectChart: (id: string) => void
+  onAddChart: () => void
+  onRemoveChart: (id: string) => void
   onFile: (file: File) => void
 }) {
   if (state.status === "empty") {
@@ -123,33 +129,139 @@ export function ChartCanvas({
     )
   }
 
+  const single = charts.length === 1
+
   return (
-    <ReadyCanvas
-      state={state}
-      chartType={chartType}
-      mapping={mapping}
-      aggregation={aggregation}
-      columns={columns}
-    />
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <DatasetBar
+        dataset={state.dataset}
+        data={state.data}
+        count={charts.length}
+        onAddChart={onAddChart}
+      />
+      {/*
+        `minmax(26rem, 1fr)`: 남는 높이는 행끼리 나눠 갖고(카드 2장이면 그만큼 커진다),
+        모자라면 26rem에서 멈추고 그리드가 스크롤한다. 고정 높이로 두면 카드가 적을 때
+        아래가 텅 빈다.
+
+        스크롤은 그리드가 맡는다. 카드 안쪽(Recharts가 폭을 재는 상자)은 절대 스크롤하지
+        않는다 — 스크롤바가 생겼다 사라지며 폭이 진동하면 무한 재측정에 빠진다.
+        세로 스크롤바가 카드 폭을 흔들지 않도록 자리를 미리 비워둔다.
+      */}
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 auto-rows-[minmax(26rem,1fr)] gap-3 overflow-y-auto [scrollbar-gutter:stable]",
+          !single && "xl:grid-cols-2"
+        )}
+      >
+        {charts.map((spec, index) => (
+          <ChartCard
+            key={spec.id}
+            spec={spec}
+            number={index + 1}
+            order={index}
+            data={state.data}
+            columns={columns}
+            selected={spec.id === activeId}
+            onSelect={() => onSelectChart(spec.id)}
+            onRemove={single ? undefined : () => onRemoveChart(spec.id)}
+          />
+        ))}
+      </div>
+    </div>
   )
 }
 
-function ReadyCanvas({
-  state,
-  chartType,
-  mapping,
-  aggregation,
-  columns,
+/** 파일 단위 정보와 경고. 카드마다 반복하면 같은 문장을 네 번 읽게 된다. */
+function DatasetBar({
+  dataset,
+  data,
+  count,
+  onAddChart,
 }: {
-  state: Extract<CanvasState, { status: "ready" }>
-  chartType: ChartType
-  mapping: Mapping
-  aggregation: Aggregation
+  dataset: Dataset
+  data: ParsedFile
+  count: number
+  onAddChart: () => void
+}) {
+  const caveats = [
+    data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
+    data.errorCount > 0 && `${data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
+  ].filter(Boolean)
+
+  const full = count >= MAX_CHARTS
+
+  return (
+    <div className="flex shrink-0 items-start gap-4 rounded-2xl border border-border bg-card px-5 py-3.5">
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-mono text-sm" title={dataset.name}>
+          {dataset.name}
+        </p>
+        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+          {data.rows.length.toLocaleString()}행 · {data.columns.length}개 컬럼
+        </p>
+        {caveats.length > 0 && (
+          <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" />
+            <span>{caveats.join(" ")}</span>
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5">
+        {full && (
+          <span className="hidden text-[11px] text-muted-foreground sm:inline">
+            최대 {MAX_CHARTS}개
+          </span>
+        )}
+        {/* 카드를 늘리는 것이 이 버튼의 일이다. 새 카드가 보고 있던 차트를 물려받는 것은
+            시작점일 뿐이라 이름에 넣지 않는다. */}
+        <Button variant="outline" size="sm" onClick={onAddChart} disabled={full}>
+          <Plus />
+          차트 추가
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 카드가 무엇을 그리고 있는지 한 줄로. 네 장이 나란히 서면 종류만으로는 구분이 안 된다.
+ * 분할은 축이 아니므로 화살표에 끼우지 않고 뒤에 덧붙인다.
+ */
+function describe(spec: ChartSpec): { axes: string; series?: string } {
+  const slots = MAPPING_SLOTS[spec.chartType]
+  const axes = slots
+    .filter((slot) => slot.key !== "series")
+    .map((slot) => spec.mapping[slot.key])
+    .filter(Boolean)
+    .join(" → ")
+  const hasSeries = slots.some((slot) => slot.key === "series")
+  return { axes, series: hasSeries ? spec.mapping.series : undefined }
+}
+
+function ChartCard({
+  spec,
+  number,
+  order,
+  data,
+  columns,
+  selected,
+  onSelect,
+  onRemove,
+}: {
+  spec: ChartSpec
+  number: number
+  /** 그리드에서의 순번. 카드끼리 계산이 같은 프레임에 겹치지 않게 미루는 데 쓴다. */
+  order: number
+  data: ParsedFile
   columns: ColumnInfo[]
+  selected: boolean
+  onSelect: () => void
+  onRemove?: () => void
 }) {
   const [view, setView] = useState<"chart" | "table">("chart")
   const frameRef = useRef(0)
-  const { data } = state
+  const { chartType, mapping, aggregation } = spec
 
   /*
     집계와 Recharts 렌더는 둘 다 동기라서, 범주가 만 개쯤 되면 그동안 화면이 통째로
@@ -173,27 +285,31 @@ function ReadyCanvas({
 
   useEffect(() => {
     let cancelled = false
-    const outer = requestAnimationFrame(() => {
-      const inner = requestAnimationFrame(() => {
-        if (cancelled) return
-        const { chartType, mapping, aggregation, columns, rows } = request
-        setBuilt({
-          request,
-          frame:
-            chartType === "scatter"
-              ? null
-              : buildChartFrame(chartType, mapping, aggregation, columns, rows),
-          scatter: chartType === "scatter" ? buildScatterFrame(mapping, rows) : null,
-        })
+    // 두 번은 표시를 먼저 찍기 위한 것이고, 순번만큼 더 미루는 것은 카드끼리 계산이
+    // 한 프레임에 몰리지 않게 하기 위한 것이다. 앞 카드부터 한 장씩 차례로 그려진다.
+    let remaining = 2 + order
+    const step = () => {
+      if (cancelled) return
+      if (remaining-- > 0) {
+        frameRef.current = requestAnimationFrame(step)
+        return
+      }
+      const { chartType, mapping, aggregation, columns, rows } = request
+      setBuilt({
+        request,
+        frame:
+          chartType === "scatter"
+            ? null
+            : buildChartFrame(chartType, mapping, aggregation, columns, rows),
+        scatter: chartType === "scatter" ? buildScatterFrame(mapping, rows) : null,
       })
-      frameRef.current = inner
-    })
-    frameRef.current = outer
+    }
+    frameRef.current = requestAnimationFrame(step)
     return () => {
       cancelled = true
       cancelAnimationFrame(frameRef.current)
     }
-  }, [request])
+  }, [request, order])
 
   const frame = built?.frame ?? null
   const scatter = built?.scatter ?? null
@@ -202,9 +318,8 @@ function ReadyCanvas({
     .filter((slot) => !slot.optional && !mapping[slot.key])
     .map((slot) => slot.label)
 
+  // 이 카드에만 해당하는 경고. 파일 단위 경고는 위 요약 바가 맡는다.
   const caveats = [
-    data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
-    data.errorCount > 0 && `${data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
     frame &&
       frame.folded > 0 &&
       `조각이 많아 나머지 ${frame.folded}개 범주는 "기타"로 묶었습니다.`,
@@ -215,51 +330,92 @@ function ReadyCanvas({
   ].filter(Boolean)
 
   const drawable = Boolean(frame ?? scatter)
+  const { axes, series } = describe(spec)
 
   return (
-    <CanvasFrame
-      title={
-        <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-mono text-sm" title={state.dataset.name}>
-              {state.dataset.name}
-            </p>
-            <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-              {data.rows.length.toLocaleString()}행 · {data.columns.length}개 컬럼
-              {chartType !== "scatter" && ` · ${AGGREGATION_LABELS[aggregation]}`}
-            </p>
-            {caveats.length > 0 && (
-              <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <AlertTriangle className="mt-px size-3.5 shrink-0" />
-                <span>{caveats.join(" ")}</span>
-              </p>
+    // 카드 아무 데나 누르면 사이드바가 그 카드를 편집한다. 키보드로는 번호 배지가 그 역할.
+    <section
+      onClick={onSelect}
+      className={cn(
+        "flex min-h-0 flex-col rounded-2xl border bg-card transition-colors",
+        selected ? "border-foreground/30" : "border-border hover:border-foreground/15"
+      )}
+    >
+      <header className="flex shrink-0 items-start gap-2.5 border-b border-border px-4 py-3">
+        {/*
+          번호는 장식이 아니다. 사이드바의 같은 배지와 짝이 되어 "지금 어느 카드를
+          편집 중인지"를 두 패널에 걸쳐 잇는다.
+        */}
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-label={`차트 ${number} 편집`}
+          aria-pressed={selected}
+          className={cn(
+            "mt-px flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold tabular-nums transition-colors",
+            selected ? "bg-foreground text-background" : "bg-muted text-muted-foreground"
+          )}
+        >
+          {number}
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm">
+            {axes ? (
+              <span className="font-mono">{axes}</span>
+            ) : (
+              <span className="text-muted-foreground">컬럼 선택 전</span>
             )}
-          </div>
-          {drawable && (
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              value={view}
-              onValueChange={(next) => next && setView(next as "chart" | "table")}
-              spacing={0}
-              className="shrink-0"
-            >
-              <ToggleGroupItem value="chart" size="sm" className="text-xs">
-                차트
-              </ToggleGroupItem>
-              <ToggleGroupItem value="table" size="sm" className="text-xs">
-                표
-              </ToggleGroupItem>
-            </ToggleGroup>
+            {series && <span className="font-mono text-muted-foreground"> · {series}</span>}
+            {/* 집계 방식은 화면에 밝힌다. 몇 줄이 한 마크로 접혔는지가 안 보이면 오독한다. */}
+            {chartType !== "scatter" && (
+              <span className="text-muted-foreground"> ({AGGREGATION_LABELS[aggregation]})</span>
+            )}
+          </p>
+          {caveats.length > 0 && (
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              <span>{caveats.join(" ")}</span>
+            </p>
           )}
         </div>
-      }
-    >
+        {drawable && (
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={view}
+            onValueChange={(next) => next && setView(next as "chart" | "table")}
+            spacing={0}
+            className="shrink-0"
+          >
+            <ToggleGroupItem value="chart" size="sm" className="text-xs">
+              차트
+            </ToggleGroupItem>
+            <ToggleGroupItem value="table" size="sm" className="text-xs">
+              표
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
+        {onRemove && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`차트 ${number} 삭제`}
+            className="mt-0.5"
+            onClick={(event) => {
+              event.stopPropagation()
+              onRemove()
+            }}
+          >
+            <X />
+          </Button>
+        )}
+      </header>
+
       {/*
         relative + 자식 absolute로 채운다. flex-1은 높이가 auto라서 자식의 h-full(백분율)이
         해석되지 못하고 콘텐츠 높이로 무너진다 — Recharts가 47px짜리 플롯을 그렸다.
       */}
-      <div className="relative min-h-64 flex-1">
+      <div className="relative min-h-64 flex-1 p-4">
         {/* 계산 중에도 이전 차트를 남겨둔다. 비워버리면 화면이 튄다. */}
         <div className={busy ? "pointer-events-none h-full opacity-40" : "h-full"}>
           {!drawable ? (
@@ -287,6 +443,6 @@ function ReadyCanvas({
           </div>
         )}
       </div>
-    </CanvasFrame>
+    </section>
   )
 }

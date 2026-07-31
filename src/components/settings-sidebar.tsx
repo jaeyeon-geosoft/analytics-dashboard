@@ -187,6 +187,8 @@ export function SettingsSidebar({
   data,
   columns,
   onColumnTypeChange,
+  chartNumber,
+  chartCount,
   chartType,
   onChartTypeChange,
   mapping,
@@ -201,6 +203,9 @@ export function SettingsSidebar({
   data: ParsedFile | null
   columns: ColumnInfo[]
   onColumnTypeChange: (name: string, type: ColumnType) => void
+  /** 지금 편집 중인 카드의 번호. 캔버스의 같은 배지와 짝이 된다. */
+  chartNumber: number
+  chartCount: number
   chartType: ChartType
   onChartTypeChange: (value: ChartType) => void
   mapping: Mapping
@@ -337,6 +342,20 @@ export function SettingsSidebar({
               </SectionLabel>
               <ColumnList columns={columns} onTypeChange={onColumnTypeChange} />
             </section>
+          )}
+
+          {/*
+            차트가 여러 장이면 아래 설정이 "그중 어느 장"의 것인지 먼저 말해야 한다.
+            한 장뿐일 때는 물을 것이 없으니 띄우지 않는다.
+          */}
+          {chartCount > 1 && (
+            <div className="flex items-center gap-2 border-t border-border pt-5">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-foreground text-[11px] font-semibold text-background tabular-nums">
+                {chartNumber}
+              </span>
+              <h2 className="text-xs font-medium">차트 {chartNumber}</h2>
+              <span className="ml-auto text-[11px] text-muted-foreground">카드를 눌러 전환</span>
+            </div>
           )}
 
           <section>

@@ -6,21 +6,30 @@ import { SettingsSidebar } from "@/components/settings-sidebar"
 import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
 import type { Aggregation } from "@/lib/aggregate"
+import { createChart, duplicateChart, MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
 import { validateFile } from "@/lib/file-constraints"
 import { parseFile, type ParseOptions } from "@/lib/parse-file"
 import { inferColumns, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
-import { fillMapping, pruneMapping, type Mapping, type MappingKey } from "@/lib/mapping-slots"
+import { fillMapping, pruneMapping, type MappingKey } from "@/lib/mapping-slots"
 
 function App() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
-  const [chartType, setChartType] = useState<ChartType>("bar")
-  // 슬롯 key로 잡아두면 차트 종류를 바꿔도 같은 역할의 선택이 살아남는다.
-  const [mapping, setMapping] = useState<Mapping>({})
+  // 차트 명세(종류·매핑·집계)는 카드마다 따로다. 데이터와 컬럼만 파일 단위로 공유한다.
+  const [charts, setCharts] = useState<ChartSpec[]>(() => [createChart([])])
+  const [activeId, setActiveId] = useState("")
   // 추론 결과 + 사용자가 고친 타입. 파일과 함께 갈아치운다.
   const [columns, setColumns] = useState<ColumnInfo[]>([])
-  const [aggregation, setAggregation] = useState<Aggregation>("sum")
   // 시트를 바꾸면 다시 읽어야 해서 원본 파일을 들고 있는다. 데이터가 아니라 참조다.
   const [source, setSource] = useState<File | null>(null)
+
+  // 지운 카드가 선택돼 있었으면 첫 카드로 흘러내린다 — 지울 때 따로 손대지 않아도 된다.
+  const active = charts.find((chart) => chart.id === activeId) ?? charts[0]
+
+  function updateActive(patch: (chart: ChartSpec) => ChartSpec) {
+    setCharts((previous) =>
+      previous.map((chart) => (chart.id === active.id ? patch(chart) : chart))
+    )
+  }
 
   async function handleFile(file: File, options: ParseOptions = {}) {
     const problem = validateFile(file)
@@ -29,8 +38,12 @@ function App() {
       return
     }
 
-    // 파일이든 시트든 헤더 행이든 바뀌면 컬럼이 통째로 달라진다.
-    setMapping({})
+    // 파일이든 시트든 헤더 행이든 바뀌면 컬럼이 통째로 달라진다. 카드도 하나로 되돌린다 —
+    // 컬럼이 다 바뀐 마당에 네 장을 붙들고 있으면 전부 같은 차트가 된다.
+    // 고르고 있던 차트 종류만 넘겨받는다.
+    const fresh = createChart([], active.chartType)
+    setCharts([fresh])
+    setActiveId(fresh.id)
     setColumns([])
     setSource(file)
     setState({ status: "loading", fileName: file.name })
@@ -60,7 +73,7 @@ function App() {
       const inferred = inferColumns(data.columns, data.rows)
       setColumns(inferred)
       // 열자마자 차트가 보여야 한다. 필수 슬롯만 채운다.
-      setMapping(fillMapping({}, chartType, inferred))
+      setCharts([{ ...fresh, mapping: fillMapping({}, fresh.chartType, inferred) }])
       setState({ status: "ready", dataset: { name: file.name, size: file.size }, data })
     } catch (error) {
       setState({
@@ -89,29 +102,46 @@ function App() {
                 column.name === name ? { ...column, type } : column
               )
               setColumns(next)
-              // 타입이 바뀌면 그 컬럼이 더는 후보가 아닐 수 있다. 비면 다시 채운다.
-              setMapping((previous) =>
-                fillMapping(pruneMapping(previous, chartType, next), chartType, next)
+              // 타입이 바뀌면 그 컬럼이 더는 후보가 아닐 수 있다. 모든 카드를 정리한다 —
+              // 선택돼 있지 않은 카드도 그 컬럼을 쓰고 있을 수 있다.
+              setCharts((previous) =>
+                previous.map((chart) => ({
+                  ...chart,
+                  mapping: fillMapping(
+                    pruneMapping(chart.mapping, chart.chartType, next),
+                    chart.chartType,
+                    next
+                  ),
+                }))
               )
             }}
-            chartType={chartType}
-            onChartTypeChange={(next: ChartType) => {
-              setChartType(next)
-              setMapping((previous) =>
-                fillMapping(pruneMapping(previous, next, columns), next, columns)
-              )
-            }}
-            mapping={mapping}
+            chartNumber={charts.indexOf(active) + 1}
+            chartCount={charts.length}
+            chartType={active.chartType}
+            onChartTypeChange={(next: ChartType) =>
+              updateActive((chart) => ({
+                ...chart,
+                chartType: next,
+                mapping: fillMapping(
+                  pruneMapping(chart.mapping, next, columns),
+                  next,
+                  columns
+                ),
+              }))
+            }
+            mapping={active.mapping}
             onMappingChange={(key: MappingKey, column?: string) =>
-              setMapping((previous) => {
-                const next = { ...previous }
-                if (column) next[key] = column
-                else delete next[key]
-                return next
+              updateActive((chart) => {
+                const mapping = { ...chart.mapping }
+                if (column) mapping[key] = column
+                else delete mapping[key]
+                return { ...chart, mapping }
               })
             }
-            aggregation={aggregation}
-            onAggregationChange={setAggregation}
+            aggregation={active.aggregation}
+            onAggregationChange={(next: Aggregation) =>
+              updateActive((chart) => ({ ...chart, aggregation: next }))
+            }
             onSheetChange={(sheet: string) => source && handleFile(source, { sheet })}
             onHeaderRowChange={(headerRow: number) =>
               source &&
@@ -122,13 +152,22 @@ function App() {
             }
             onFile={handleFile}
           />
-          <main className="min-w-0 flex-1 p-4 lg:min-h-0">
+          <main className="flex min-w-0 flex-1 flex-col p-4 lg:min-h-0">
             <ChartCanvas
               state={state}
-              chartType={chartType}
-              mapping={mapping}
-              aggregation={aggregation}
+              charts={charts}
+              activeId={active.id}
               columns={columns}
+              onSelectChart={setActiveId}
+              onAddChart={() => {
+                if (charts.length >= MAX_CHARTS) return
+                const added = duplicateChart(active)
+                setCharts((previous) => [...previous, added])
+                setActiveId(added.id)
+              }}
+              onRemoveChart={(id: string) =>
+                setCharts((previous) => previous.filter((chart) => chart.id !== id))
+              }
               onFile={handleFile}
             />
           </main>
