@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Area,
   AreaChart,
@@ -112,32 +113,126 @@ const SPOT_LABEL = {
   fontWeight: 500,
 } as const
 
-/** 마크 하나가 이보다 좁아지면 못 읽는다. 이 밑으로 내려가면 스크롤로 넘긴다. */
+/** 마크 하나가 이보다 좁아지면 못 읽는다. 이 밑으로 내려가면 창을 잘라 스크롤로 넘긴다. */
 const MIN_SLOT = 28
+
+type PlotWindow = {
+  plotRef: React.RefObject<HTMLDivElement | null>
+  onWheel: (event: React.WheelEvent) => void
+  bar: React.ReactNode
+  vertical: boolean
+  /** 지금 창의 첫 범주 인덱스 */
+  start: number
+  /** 창에 들어가는 범주 수 */
+  size: number
+}
+
+/**
+ * 보이는 범주만 그린다.
+ *
+ * 범주를 자르지 않으므로 만 행짜리 파일이면 마크도 만 개다 — Recharts가 SVG 노드를
+ * 그만큼 만드느라 화면이 십여 초 멈췄다. 그릴 수 있는 만큼만 잘라 넘기고 나머지는
+ * 스크롤바로 옮겨 본다. 마크 수가 화면 크기에 묶여서 범주가 몇 개든 비용이 같다.
+ *
+ * **스크롤바는 반드시 플롯 바깥에 둔다.** 플롯 자체에 `overflow`를 걸면 스크롤바가
+ * 생겼다 사라지며 가용 폭이 15px씩 진동하고, ResponsiveContainer가 그때마다 다시
+ * 측정해 초당 수천 번 리렌더한다(실제로 겪었다). 여기서 크기를 재는 상자는 절대
+ * 스크롤하지 않으므로 그 되먹임이 없다.
+ */
+function usePlotWindow(count: number, vertical: boolean): PlotWindow {
+  const plotRef = useRef<HTMLDivElement>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+  const [extent, setExtent] = useState(0)
+  const [start, setStart] = useState(0)
+
+  useEffect(() => {
+    const element = plotRef.current
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      setExtent(vertical ? height : width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [vertical])
+
+  const size = Math.max(1, Math.floor(extent / MIN_SLOT))
+  const limit = Math.max(0, count - size)
+  // 컬럼이나 차트 종류가 바뀌면 범주 수가 줄어든다. 렌더에는 잘라낸 값을 쓴다.
+  const offset = Math.min(start, limit)
+
+  const onScroll = useCallback(() => {
+    const element = barRef.current
+    if (!element) return
+    const travel = vertical
+      ? element.scrollHeight - element.clientHeight
+      : element.scrollWidth - element.clientWidth
+    const at = vertical ? element.scrollTop : element.scrollLeft
+    setStart(travel > 0 ? Math.round((at / travel) * limit) : 0)
+  }, [limit, vertical])
+
+  const onWheel = useCallback(
+    (event: React.WheelEvent) => {
+      const element = barRef.current
+      if (!element) return
+      // 가로로 넘길 때는 트랙패드의 deltaX와 휠의 deltaY를 둘 다 받는다.
+      const delta = vertical
+        ? event.deltaY
+        : Math.abs(event.deltaX) > Math.abs(event.deltaY)
+          ? event.deltaX
+          : event.deltaY
+      if (delta === 0) return
+      if (vertical) element.scrollTop += delta
+      else element.scrollLeft += delta
+    },
+    [vertical]
+  )
+
+  // 트랙 대비 썸 크기가 곧 "전체 중 얼마를 보고 있는지"가 된다.
+  const bar =
+    limit > 0 ? (
+      <div
+        ref={barRef}
+        onScroll={onScroll}
+        className={cn(
+          "shrink-0 [scrollbar-width:thin]",
+          "[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border",
+          vertical
+            ? "ml-1 w-2 overflow-y-auto [&::-webkit-scrollbar]:w-2"
+            : "mt-1.5 h-2 overflow-x-auto [&::-webkit-scrollbar]:h-2"
+        )}
+      >
+        <div
+          style={
+            vertical
+              ? { height: `${(count / size) * 100}%`, width: 1 }
+              : { width: `${(count / size) * 100}%`, height: 1 }
+          }
+        />
+      </div>
+    ) : null
+
+  return { plotRef, onWheel, bar, vertical, start: offset, size }
+}
 
 /**
  * 축 이름은 Recharts의 `label` 대신 바깥에 HTML로 둔다. `insideLeft` 회전 라벨은
  * 눈금과 겹치고 폭을 예측할 수 없다. 여기 두면 텍스트 토큰도 그대로 쓸 수 있다.
  *
- * `scrollCount`를 주면 그만큼 자리를 확보하고, 화면보다 넓어지면 스크롤로 넘긴다.
- * 범주가 많아도 자르지 않으므로 막대가 1px가 되는 것을 이렇게 피한다.
+ * `plot`을 주면 창 스크롤바가 붙는다 — 가로 막대는 오른쪽, 나머지는 아래.
  */
 function AxisFrame({
   xLabel,
   yLabel,
-  scrollCount,
-  vertical,
+  plot,
   children,
 }: {
   xLabel: string
   yLabel: string
-  scrollCount?: number
-  /** 가로 막대처럼 범주가 세로로 쌓이는 경우 */
-  vertical?: boolean
+  /** 없으면 스크롤 없이 그대로 채운다(산점도) */
+  plot?: PlotWindow
   children: React.ReactNode
 }) {
-  const span = scrollCount ? scrollCount * MIN_SLOT : undefined
-
   return (
     <div className="absolute inset-0 flex flex-col">
       <div className="flex min-h-0 flex-1 gap-1">
@@ -147,19 +242,18 @@ function AxisFrame({
         >
           {truncate(yLabel, 24)}
         </div>
-        <div
-          className={cn(
-            "relative min-h-0 min-w-0 flex-1",
-            span && (vertical ? "overflow-y-auto" : "overflow-x-auto")
-          )}
-        >
-          {/* 넘칠 때만 자리를 넓힌다. 좁으면 min-*가 무시되어 그대로 꽉 찬다. */}
-          <div
-            className="relative h-full w-full"
-            style={span ? (vertical ? { minHeight: span } : { minWidth: span }) : undefined}
-          >
-            {children}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1">
+            <div
+              ref={plot?.plotRef}
+              onWheel={plot?.onWheel}
+              className="relative min-h-0 min-w-0 flex-1"
+            >
+              {children}
+            </div>
+            {plot?.vertical && plot.bar}
           </div>
+          {plot && !plot.vertical && plot.bar}
         </div>
       </div>
       <p
@@ -170,6 +264,34 @@ function AxisFrame({
       </p>
     </div>
   )
+}
+
+/**
+ * 값 축의 상한. 창을 옮길 때마다 축이 다시 잡히면 창끼리 비교가 거짓말이 되므로
+ * **보이는 창이 아니라 전체**를 기준으로 고정한다.
+ */
+function peakValue(frame: ChartFrame, stacked: boolean): number {
+  let peak = 0
+  for (const row of frame.rows) {
+    if (stacked) {
+      let total = 0
+      for (const entry of frame.series) total += Number(row[entry.key]) || 0
+      if (total > peak) peak = total
+    } else {
+      for (const entry of frame.series) {
+        const value = Number(row[entry.key]) || 0
+        if (value > peak) peak = value
+      }
+    }
+  }
+  return peak
+}
+
+/** 눈금이 196,323 같은 수로 끝나지 않게 한 자리 위로 올린다. */
+function niceCeil(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  const magnitude = 10 ** Math.floor(Math.log10(value))
+  return Math.ceil(value / magnitude) * magnitude
 }
 
 export function ChartView({
@@ -203,10 +325,25 @@ function CartesianView({
   const stacked = chartType === "stacked"
   const timeline = chartType === "line" || chartType === "area"
 
+  const plot = usePlotWindow(frame.rows.length, horizontal)
+
   // 의미 있는 지점 하나만 직접 라벨한다 — 막대는 최대값, 선·영역은 최신값.
   // 모든 점에 숫자를 찍으면 아무도 안 읽는다(CLAUDE.md). 나머지 값은 축과 툴팁,
   // 표 보기가 맡는다. 시리즈가 여럿이면 끝점이 서로 겹칠 수 있어 붙이지 않는다.
-  const rows = multi ? frame.rows : withSpotLabel(frame, timeline)
+  //
+  // 라벨을 먼저 붙이고 자른다 — 그래야 창 안의 최대가 아니라 진짜 최대에만 붙는다.
+  const labeled = useMemo(
+    () => (multi ? frame.rows : withSpotLabel(frame, timeline)),
+    [frame, multi, timeline]
+  )
+  const rows = useMemo(
+    () => labeled.slice(plot.start, plot.start + plot.size),
+    [labeled, plot.start, plot.size]
+  )
+
+  // 음수가 섞이면 0을 바닥으로 잡을 수 없다. 그때는 Recharts에 맡긴다.
+  const peak = useMemo(() => niceCeil(peakValue(frame, stacked)), [frame, stacked])
+  const valueDomain: [number, number] | undefined = peak > 0 ? [0, peak] : undefined
 
   const grid = (
     <CartesianGrid
@@ -221,7 +358,7 @@ function CartesianView({
   if (chartType === "line" || chartType === "area") {
     const Chart = chartType === "line" ? LineChart : AreaChart
     return (
-      <AxisFrame xLabel={frame.xLabel} yLabel={frame.yLabel} scrollCount={rows.length}>
+      <AxisFrame xLabel={frame.xLabel} yLabel={frame.yLabel} plot={plot}>
         <ChartContainer config={config} className="absolute inset-0 aspect-auto">
           <Chart
             data={rows}
@@ -241,6 +378,7 @@ function CartesianView({
               tickLine={false}
               axisLine={false}
               width={52}
+              domain={valueDomain}
               tickFormatter={compact}
             />
             {/* 선·영역은 크로스헤어 + 한 번에 전 시리즈를 읽는 툴팁 */}
@@ -291,8 +429,7 @@ function CartesianView({
     <AxisFrame
       xLabel={horizontal ? frame.yLabel : frame.xLabel}
       yLabel={horizontal ? frame.xLabel : frame.yLabel}
-      scrollCount={rows.length}
-      vertical={horizontal}
+      plot={plot}
     >
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">
         <BarChart
@@ -310,6 +447,7 @@ function CartesianView({
                 tick={AXIS_TICK}
                 tickLine={false}
                 axisLine={{ stroke: GRID }}
+                domain={valueDomain}
                 tickFormatter={compact}
               />
               <YAxis
@@ -338,6 +476,7 @@ function CartesianView({
                 tickLine={false}
                 axisLine={false}
                 width={52}
+                domain={valueDomain}
                 tickFormatter={compact}
               />
             </>

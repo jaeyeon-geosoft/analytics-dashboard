@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, Loader2 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -136,26 +136,33 @@ function ReadyCanvas({
     멈춘다. 계산을 상태로 미뤄서 "그리는 중"이 먼저 찍히게 한다. rAF 한 번으로는 같은
     프레임에 묶여 안 보이므로 두 번 양보한다.
   */
+  // 입력 묶음의 정체성이 곧 "무엇을 그려야 하는지"다. 결과에 그 묶음을 붙여두면
+  // busy를 따로 상태로 들 필요 없이 비교만으로 나온다(effect 안 동기 setState 금지).
+  const request = useMemo(
+    () => ({ chartType, mapping, aggregation, columns, rows: data.rows }),
+    [chartType, mapping, aggregation, columns, data.rows]
+  )
   const [built, setBuilt] = useState<{
+    request: typeof request
     frame: ChartFrame | null
     scatter: ScatterFrame | null
   } | null>(null)
-  const [busy, setBusy] = useState(true)
+  const busy = built?.request !== request
 
   useEffect(() => {
-    setBusy(true)
     let cancelled = false
     const outer = requestAnimationFrame(() => {
       const inner = requestAnimationFrame(() => {
         if (cancelled) return
+        const { chartType, mapping, aggregation, columns, rows } = request
         setBuilt({
+          request,
           frame:
             chartType === "scatter"
               ? null
-              : buildChartFrame(chartType, mapping, aggregation, columns, data.rows),
-          scatter: chartType === "scatter" ? buildScatterFrame(mapping, data.rows) : null,
+              : buildChartFrame(chartType, mapping, aggregation, columns, rows),
+          scatter: chartType === "scatter" ? buildScatterFrame(mapping, rows) : null,
         })
-        setBusy(false)
       })
       frameRef.current = inner
     })
@@ -164,7 +171,7 @@ function ReadyCanvas({
       cancelled = true
       cancelAnimationFrame(frameRef.current)
     }
-  }, [chartType, mapping, aggregation, columns, data.rows])
+  }, [request])
 
   const frame = built?.frame ?? null
   const scatter = built?.scatter ?? null
@@ -179,9 +186,9 @@ function ReadyCanvas({
     frame &&
       frame.folded > 0 &&
       `조각이 많아 나머지 ${frame.folded}개 범주는 "기타"로 묶었습니다.`,
-    // 자르지 않고 전부 그리므로 화면 밖으로 넘어간다. 어디를 봐야 하는지 알려준다.
+    // 버리는 게 아니라 창으로 보는 것이므로, 나머지를 어떻게 보는지까지 말해준다.
     frame && frame.folded === 0 && frame.rows.length > 40 &&
-      `범주 ${frame.rows.length.toLocaleString()}개를 전부 그렸습니다. 가로로 밀어 보거나 표 보기를 쓰세요.`,
+      `범주가 ${frame.rows.length.toLocaleString()}개라 화면에 들어가는 만큼만 그립니다. 스크롤바로 나머지를 보세요.`,
     scatter && scatter.omitted > 0 && `점 ${scatter.omitted.toLocaleString()}개는 그리지 않았습니다.`,
   ].filter(Boolean)
 
