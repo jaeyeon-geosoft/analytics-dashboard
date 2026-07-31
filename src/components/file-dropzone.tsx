@@ -46,7 +46,7 @@ export function FileDropzone({
         {isDragging ? "여기에 놓으세요" : "표를 차트로 봅니다"}
       </p>
       <p className="mt-1.5 max-w-xs text-sm text-muted-foreground">
-        CSV나 Excel 파일을 이 영역에 끌어다 놓으세요.
+        CSV 또는 Excel 파일을 이 영역으로 끌어다 놓으세요.
       </p>
 
       <Button asChild variant="outline" size="sm" className="mt-5">

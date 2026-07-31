@@ -261,7 +261,7 @@ export function SettingsSidebar({
               </div>
             ) : (
               <p className="rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
-                아직 연 파일이 없습니다.
+                열린 파일이 없습니다.
               </p>
             )}
 
@@ -272,7 +272,11 @@ export function SettingsSidebar({
                   <Label htmlFor="header-row" className="text-xs text-muted-foreground">
                     헤더 행
                   </Label>
-                  <Hint>컬럼 이름이 적힌 줄. 제목 줄이 위에 붙은 파일만 바꾸면 됩니다.</Hint>
+                  <Hint>
+                    컬럼 이름이 적힌 줄입니다.
+                    <br />
+                    제목 줄이 위에 붙은 파일만 바꾸면 됩니다.
+                  </Hint>
                 </div>
                 <Select
                   value={String(data.headerRow)}
@@ -320,7 +324,15 @@ export function SettingsSidebar({
 
           {columns.length > 0 && (
             <section>
-              <SectionLabel hint="각 컬럼에 어떤 값이 들었는지. 틀렸으면 바꾸세요 — 아래 선택지가 따라 바뀝니다.">
+              <SectionLabel
+                  hint={
+                    <>
+                      컬럼의 값이 맞는지 확인하세요.
+                      <br />
+                      수정하면 아래 선택지가 자동으로 바뀝니다.
+                    </>
+                  }
+              >
                 컬럼 {columns.length}개
               </SectionLabel>
               <ColumnList columns={columns} onTypeChange={onColumnTypeChange} />
@@ -381,7 +393,7 @@ export function SettingsSidebar({
         <SectionLabel>로컬 전용</SectionLabel>
         <ul className="space-y-1 border-l border-border pl-3 text-[11px] leading-relaxed text-muted-foreground">
           <li>파일은 이 브라우저 밖으로 나가지 않습니다.</li>
-          <li>기기에 저장하지 않습니다.</li>
+          <li>기기에 저장되지 않습니다.</li>
           <li>새로고침하면 초기화됩니다.</li>
         </ul>
       </div>
