@@ -24,6 +24,7 @@ import type { ColumnInfo } from "@/lib/infer-types"
 import {
   allowsReference,
   isPointChart,
+  isTimeline,
   MAPPING_SLOTS,
   rightValueColumn,
   usesAggregation,
@@ -375,8 +376,11 @@ function ChartCard({
       frame.folded > 0 &&
       `조각이 많아 나머지 ${frame.folded}개 범주는 "기타"로 묶었습니다.`,
     // 버리는 게 아니라 창으로 보는 것이므로, 나머지를 어떻게 보는지까지 말해준다.
-    frame && frame.folded === 0 && frame.rows.length > 40 &&
+    // 선·영역은 창을 쓰지 않고 전부 그리므로 이 말이 거짓이 된다.
+    frame && frame.folded === 0 && frame.rows.length > 40 && !isTimeline(chartType) &&
       `범주가 ${frame.rows.length.toLocaleString()}개라 화면에 들어가는 만큼만 그립니다. 스크롤바로 나머지를 보세요.`,
+    frame?.sampledFrom &&
+      `점 ${frame.sampledFrom.toLocaleString()}개를 화면 해상도에 맞춰 ${frame.rows.length.toLocaleString()}개로 줄여 그렸습니다. 구간마다 최소·최대를 남겨 튀는 값은 그대로입니다.`,
     scatter && scatter.omitted > 0 && `점 ${scatter.omitted.toLocaleString()}개는 그리지 않았습니다.`,
   ].filter(Boolean)
 

@@ -122,6 +122,16 @@ export function usesAggregation(chartType: ChartType): boolean {
 }
 
 /**
+ * 점을 하나의 `<path>`로 잇는 종류.
+ *
+ * 창(`usePlotWindow`)이 필요한 이유는 마크 하나가 SVG 노드 하나이기 때문인데, 여기는
+ * 점이 몇 개든 노드가 하나다. 자를 이유가 없고, 자르면 시계열의 모양 자체를 못 본다.
+ */
+export function isTimeline(chartType: ChartType): boolean {
+  return chartType === "line" || chartType === "area"
+}
+
+/**
  * 기준선(평균·중앙값)을 걸 수 있는 종류.
  *
  * 값 축이 하나로 정해지는 곳만이다. 누적 막대는 "무엇의 평균"인지 모호하고, 이중 축이

@@ -10,6 +10,7 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceDot,
   ReferenceLine,
   Scatter,
   ScatterChart,
@@ -26,7 +27,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import type { ChartType } from "@/components/chart-type-picker"
-import { isPointChart } from "@/lib/mapping-slots"
+import { isPointChart, isTimeline } from "@/lib/mapping-slots"
 import { cn } from "@/lib/utils"
 import {
   OTHER_LABEL,
@@ -193,7 +194,7 @@ type PlotWindow = {
  * 측정해 초당 수천 번 리렌더한다(실제로 겪었다). 여기서 크기를 재는 상자는 절대
  * 스크롤하지 않으므로 그 되먹임이 없다.
  */
-function usePlotWindow(count: number, vertical: boolean): PlotWindow {
+function usePlotWindow(count: number, vertical: boolean, slot: number): PlotWindow {
   const plotRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const [extent, setExtent] = useState(0)
@@ -210,7 +211,8 @@ function usePlotWindow(count: number, vertical: boolean): PlotWindow {
     return () => observer.disconnect()
   }, [vertical])
 
-  const size = Math.max(1, Math.floor(extent / MIN_SLOT))
+  // slot이 0이면 창을 쓰지 않는다 — 전부 그린다.
+  const size = slot > 0 ? Math.max(1, Math.floor(extent / slot)) : count
   const limit = Math.max(0, count - size)
   // 컬럼이나 차트 종류가 바뀌면 범주 수가 줄어든다. 렌더에는 잘라낸 값을 쓴다.
   const offset = Math.min(start, limit)
@@ -415,19 +417,28 @@ function CartesianView({
   const multi = frame.series.length > 1
   const horizontal = chartType === "hbar"
   const stacked = chartType === "stacked"
-  const timeline = chartType === "line" || chartType === "area"
+  const timeline = isTimeline(chartType)
   // 오른쪽 축에 놓인 시리즈가 있으면 이중 축이다(선 차트에서만 생긴다).
   const dual = frame.series.some((entry) => entry.axis === "right")
 
-  const plot = usePlotWindow(frame.rows.length, horizontal)
+  /*
+    창은 **마크가 노드마다 하나씩 생기는 종류에만** 필요하다. 막대 만 개는 `<rect>` 만
+    개라 화면이 십여 초 멈추지만, 선·영역은 점이 몇 개든 `<path>` 하나다 — 노드가 늘지
+    않으니 자를 이유가 없다. 자르면 오히려 5시간짜리 시계열의 모양을 볼 수 없다.
+  */
+  const plot = usePlotWindow(frame.rows.length, horizontal, timeline ? 0 : MIN_SLOT)
 
   // 의미 있는 지점 하나만 직접 라벨한다 — 막대는 최대값, 선·영역은 최신값.
   // 모든 점에 숫자를 찍으면 아무도 안 읽는다(CLAUDE.md). 나머지 값은 축과 툴팁,
   // 표 보기가 맡는다. 시리즈가 여럿이면 끝점이 서로 겹칠 수 있어 붙이지 않는다.
   //
   // 라벨을 먼저 붙이고 자른다 — 그래야 창 안의 최대가 아니라 진짜 최대에만 붙는다.
+  //
+  // 시계열은 이 방식을 쓰지 않는다. `LabelList`는 **점마다 `<text>`를 하나씩** 만드는데,
+  // 값이 적히는 건 한 점뿐인데도 3,002개가 생겨 렌더가 30초 걸렸다(측정). 창으로 40개만
+  // 그릴 때는 드러나지 않던 비용이다. 대신 아래에서 그 한 점에만 주석을 단다.
   const labeled = useMemo(
-    () => (multi ? frame.rows : withSpotLabel(frame, timeline)),
+    () => (multi || timeline ? frame.rows : withSpotLabel(frame, false)),
     [frame, multi, timeline]
   )
   const rows = useMemo(
@@ -503,6 +514,24 @@ function CartesianView({
   const withReference = (base: string, onThisAxis: boolean) =>
     frame.reference && onThisAxis ? `${base} · ┄ ${frame.reference.label}` : base
 
+  // 시계열의 최신값 한 점. 노드 하나로 끝난다(위 `labeled` 주석 참고).
+  const last = timeline && !multi ? frame.rows[frame.rows.length - 1] : undefined
+  const lastKey = frame.series[0]?.key
+  const spot = last && lastKey !== undefined && (
+    <ReferenceDot
+      x={String(last.x)}
+      y={Number(last[lastKey])}
+      r={0}
+      label={{
+        value: Number(last[lastKey]).toLocaleString(undefined, { maximumFractionDigits: 1 }),
+        position: "top",
+        fill: "var(--foreground)",
+        fontSize: 11,
+        fontWeight: 500,
+      }}
+    />
+  )
+
   if (chartType === "line" || chartType === "area") {
     const Chart = chartType === "line" ? LineChart : AreaChart
     return (
@@ -520,11 +549,17 @@ function CartesianView({
             margin={{ top: 24, right: multi ? 16 : 40, bottom: 4, left: 4 }}
           >
             {grid}
+            {/*
+              눈금 간격을 반드시 숫자로 준다. 안 주면 Recharts가 어느 눈금을 감출지
+              정하려고 **모든 라벨의 폭을 잰다** — 창을 쓸 때는 40개뿐이라 드러나지
+              않았지만, 시계열 전체를 그리면 3,000개를 재느라 95초를 잡아먹었다.
+            */}
             <XAxis
               dataKey="x"
               tick={AXIS_TICK}
               tickLine={false}
               axisLine={{ stroke: GRID }}
+              interval={Math.max(0, Math.ceil(rows.length / 12) - 1)}
               tickFormatter={(value: string) => category(value, acrossMax)}
             />
             {/*
@@ -572,7 +607,6 @@ function CartesianView({
                   dot={false}
                   isAnimationActive={false}
                   activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-                  label={multi ? undefined : { ...SPOT_LABEL, position: "top", offset: 8 }}
                 />
               ) : (
                 <Area
@@ -586,10 +620,10 @@ function CartesianView({
                   fill={multi ? SLOTS[index] : SINGLE}
                   fillOpacity={0.1}
                   activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-                  label={multi ? undefined : { ...SPOT_LABEL, position: "top", offset: 8 }}
                 />
               ),
             )}
+            {spot}
             {reference}
           </Chart>
         </ChartContainer>

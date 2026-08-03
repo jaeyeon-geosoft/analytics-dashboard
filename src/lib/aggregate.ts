@@ -76,6 +76,63 @@ export type ChartFrame = {
   folded: number
   /** 기준선. 고르지 않았으면 없다. */
   reference?: ChartReference
+  /** 화면 해상도에 맞춰 줄였을 때의 **원래** 점 수. 줄이지 않았으면 없다. */
+  sampledFrom?: number
+}
+
+/**
+ * 선·영역이 한 번에 그릴 점 수.
+ *
+ * 창으로 자르지 않는 이유는 시계열은 모양이 곧 정보이기 때문인데, 그렇다고 다 그릴 수도
+ * 없다 — 100,000점을 넘기면 `<path>`의 `d` 속성만 4.7MB가 되고 렌더가 **39초** 걸린다
+ * (재렌더마다 40초씩 다시 든다. 실제로 탭이 얼어붙었다). 플롯 폭이 1,500px을 넘는 일이
+ * 없으니 그 두 배면 픽셀당 두 점 — 눈으로 구분할 수 있는 한계다.
+ */
+const MAX_PLOT_POINTS = 3000
+
+/**
+ * 화면에 그릴 만큼으로 줄인다.
+ *
+ * 구간마다 **최솟값·최댓값 행을 남긴다.** 등간격으로 솎으면 한 점짜리 스파이크가 통째로
+ * 사라지는데, 장비 로그에서는 그 튐이 찾으려는 것 자체다(22초 지연 한 번이 그렇다).
+ * 남기는 것은 원본 행이라 라벨·툴팁·표는 그대로다.
+ */
+function downsample(
+  rows: Record<string, string | number>[],
+  series: ChartSeries[]
+): Record<string, string | number>[] {
+  if (rows.length <= MAX_PLOT_POINTS) return rows
+
+  const buckets = Math.floor(MAX_PLOT_POINTS / 2)
+  const span = rows.length / buckets
+  // 양 끝은 무조건 남긴다 — 시계열의 시작과 끝이 잘리면 기간 자체가 달라 보인다.
+  const keep = new Set<number>([0, rows.length - 1])
+
+  for (let bucket = 0; bucket < buckets; bucket += 1) {
+    const from = Math.floor(bucket * span)
+    const to = Math.min(rows.length, Math.floor((bucket + 1) * span))
+    let lowAt = from
+    let highAt = from
+    let low = Infinity
+    let high = -Infinity
+    for (let index = from; index < to; index += 1) {
+      for (const entry of series) {
+        const value = Number(rows[index][entry.key] ?? 0)
+        if (value < low) {
+          low = value
+          lowAt = index
+        }
+        if (value > high) {
+          high = value
+          highAt = index
+        }
+      }
+    }
+    keep.add(lowAt)
+    keep.add(highAt)
+  }
+
+  return [...keep].sort((a, b) => a - b).map((index) => rows[index])
 }
 
 export type ScatterFrame = {
@@ -223,19 +280,22 @@ export function buildChartFrame(
     entries = [...kept, { row: otherRow, total: 0 }]
   }
 
-  // 기준선은 **그려진 값**의 통계다. 축이 둘이면 어느 축의 선인지 말할 수 없어서 걸지 않는다.
-  const plotted = dual
+  // 기준선은 집계된 값 전체의 통계다. 줄이기 전에 낸다 — 줄인 뒤로 미루면 구간마다
+  // 최소·최대만 남은 표본이라 평균이 실제와 달라진다. 축이 둘이면 어느 축의 선인지
+  // 말할 수 없어서 걸지 않는다.
+  const values = dual
     ? []
     : entries.flatMap((entry) =>
-        series.map((entry2) => Number(entry.row[entry2.key] ?? 0)).filter(Number.isFinite)
+        series.map((column) => Number(entry.row[column.key] ?? 0)).filter(Number.isFinite)
       )
-  const stat = statistic(
-    [...plotted].sort((a, b) => a - b),
-    reference
-  )
+  const stat = statistic([...values].sort((a, b) => a - b), reference)
+
+  const full = entries.map((entry) => entry.row)
+  const plotted = orderedByX ? downsample(full, series) : full
 
   return {
-    rows: entries.map((entry) => entry.row),
+    rows: plotted,
+    sampledFrom: plotted.length < full.length ? full.length : undefined,
     series,
     xLabel: xColumn,
     yLabel: valueColumn ? `${valueColumn} ${AGGREGATION_LABELS[aggregation]}` : "행 개수",
