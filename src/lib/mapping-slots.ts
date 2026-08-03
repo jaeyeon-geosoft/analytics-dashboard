@@ -93,6 +93,24 @@ const RIGHT_Y: MappingSlot = {
   accepts: ["number"],
 }
 
+/**
+ * 산점도와 궤적은 같은 슬롯을 쓴다 — 둘 다 행 하나가 점 하나고 두 축이 모두 수치다.
+ * 다른 건 점을 잇느냐뿐이라, 슬롯을 하나로 묶어 두 종류가 갈라지지 않게 한다.
+ *
+ * 시리즈는 3개까지. 아무 두 점이나 나란히 놓일 수 있어서 4개부터 색 구분이
+ * 무너진다(CLAUDE.md, dataviz의 series-count ladder).
+ */
+const POINT_SLOTS: MappingSlot[] = [
+  { key: "x", label: "X축", hint: "가로 위치가 될 숫자", accepts: ["number"] },
+  NUMERIC_Y,
+  { ...SERIES, maxDistinct: 3 },
+]
+
+/** 집계하지 않고 행 하나를 점 하나로 그리는 종류. 집계 UI와 계산 경로가 갈린다. */
+export function isPointChart(chartType: ChartType): boolean {
+  return chartType === "scatter" || chartType === "path"
+}
+
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   bar: [CATEGORY, VALUE, SERIES],
   hbar: [CATEGORY, VALUE, SERIES],
@@ -102,13 +120,8 @@ export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   // 오른쪽 축을 주지 않는다.
   line: [ORDERED_X, { ...NUMERIC_Y, label: "Y축(좌)", hint: "왼쪽 축 높이가 될 숫자" }, RIGHT_Y, SERIES],
   area: [ORDERED_X, NUMERIC_Y, SERIES],
-  // 산점도는 두 축이 모두 수치여야 관계를 볼 수 있다. 시리즈는 3개까지 —
-  // 아무 두 점이나 나란히 놓일 수 있어서 4개부터 색 구분이 무너진다(CLAUDE.md).
-  scatter: [
-    { key: "x", label: "X축", hint: "가로 위치가 될 숫자", accepts: ["number"] },
-    NUMERIC_Y,
-    { ...SERIES, maxDistinct: 3 },
-  ],
+  scatter: POINT_SLOTS,
+  path: POINT_SLOTS,
   pie: [CATEGORY, VALUE],
 }
 

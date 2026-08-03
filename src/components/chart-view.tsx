@@ -25,6 +25,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart"
 import type { ChartType } from "@/components/chart-type-picker"
+import { isPointChart } from "@/lib/mapping-slots"
 import { cn } from "@/lib/utils"
 import {
   OTHER_LABEL,
@@ -393,9 +394,9 @@ export function ChartView({
   frame: ChartFrame | null
   scatter: ScatterFrame | null
 }) {
-  if (chartType === "scatter") {
+  if (isPointChart(chartType)) {
     if (!scatter) return null
-    return <ScatterView frame={scatter} />
+    return <ScatterView frame={scatter} connected={chartType === "path"} />
   }
   if (!frame) return null
   if (chartType === "pie") return <PieView frame={frame} />
@@ -707,7 +708,7 @@ function PieView({ frame }: { frame: ChartFrame }) {
   )
 }
 
-function ScatterView({ frame }: { frame: ScatterFrame }) {
+function ScatterView({ frame, connected }: { frame: ScatterFrame; connected?: boolean }) {
   const config = configFor(frame.series)
   const multi = frame.series.length > 1
 
@@ -716,10 +717,17 @@ function ScatterView({ frame }: { frame: ScatterFrame }) {
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">
         <ScatterChart margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
           <CartesianGrid stroke={GRID} strokeWidth={1} />
+          {/*
+            "축은 0에서 시작"은 막대 차트 규칙이다(CLAUDE.md). 여기서는 길이가 아니라
+            위치가 값이라 0을 끼워 넣을 이유가 없고, 끼우면 원점에서 먼 데이터가
+            (위·경도, 연도, 기온) 구석에 뭉쳐 아무것도 안 보인다. Recharts의 수치 축
+            기본값이 `[0, "auto"]`라 명시적으로 데이터에 맞춘다.
+          */}
           <XAxis
             type="number"
             dataKey="x"
             name={frame.xLabel}
+            domain={["auto", "auto"]}
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={{ stroke: GRID }}
@@ -729,6 +737,7 @@ function ScatterView({ frame }: { frame: ScatterFrame }) {
             type="number"
             dataKey="y"
             name={frame.yLabel}
+            domain={["auto", "auto"]}
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={false}
@@ -754,6 +763,17 @@ function ScatterView({ frame }: { frame: ScatterFrame }) {
               // 겹치는 점은 카드 색 링으로 떼어 놓는다.
               stroke="var(--card)"
               strokeWidth={2}
+              /*
+                궤적은 점을 데이터 순서대로 직선으로 잇는다(Recharts 기본
+                `lineType: "joint"` + `lineJointType: "linear"`). 선 색은 Recharts가
+                이 마크의 `fill`에서 가져가므로 여기서 다시 주지 않는다 — 위의
+                `stroke`는 링 색이라 그대로 넘어가면 선이 카드 색으로 사라진다.
+              */
+              line={
+                connected
+                  ? { strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }
+                  : false
+              }
             />
           ))}
         </ScatterChart>

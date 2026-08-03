@@ -20,7 +20,7 @@ import {
 } from "@/lib/aggregate"
 import { MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
 import type { ColumnInfo } from "@/lib/infer-types"
-import { MAPPING_SLOTS, rightValueColumn } from "@/lib/mapping-slots"
+import { isPointChart, MAPPING_SLOTS, rightValueColumn } from "@/lib/mapping-slots"
 import { MAX_ROWS, type ParsedFile } from "@/lib/parse-file"
 import { cn } from "@/lib/utils"
 
@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils"
 const SLOW_POINTS = 1_500
 
 function looksSlow(chartType: ChartType, rows: number): boolean {
-  return chartType === "scatter" && rows > SLOW_POINTS
+  return isPointChart(chartType) && rows > SLOW_POINTS
 }
 
 type View = "chart" | "table"
@@ -307,11 +307,10 @@ function ChartCard({
       const { chartType, mapping, aggregation, columns, rows } = request
       setBuilt({
         request,
-        frame:
-          chartType === "scatter"
-            ? null
-            : buildChartFrame(chartType, mapping, aggregation, columns, rows),
-        scatter: chartType === "scatter" ? buildScatterFrame(mapping, rows) : null,
+        frame: isPointChart(chartType)
+          ? null
+          : buildChartFrame(chartType, mapping, aggregation, columns, rows),
+        scatter: isPointChart(chartType) ? buildScatterFrame(mapping, rows) : null,
       })
     }
     frameRef.current = requestAnimationFrame(step)
@@ -408,7 +407,7 @@ function ChartCard({
             )}
             {aside && <span className="font-mono text-muted-foreground"> · {aside}</span>}
             {/* 집계 방식은 화면에 밝힌다. 몇 줄이 한 마크로 접혔는지가 안 보이면 오독한다. */}
-            {chartType !== "scatter" && (
+            {!isPointChart(chartType) && (
               <span className="text-muted-foreground"> ({AGGREGATION_LABELS[aggregation]})</span>
             )}
           </p>

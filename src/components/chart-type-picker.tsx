@@ -1,6 +1,14 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
-export type ChartType = "bar" | "hbar" | "stacked" | "line" | "area" | "scatter" | "pie"
+export type ChartType =
+  | "bar"
+  | "hbar"
+  | "stacked"
+  | "line"
+  | "area"
+  | "scatter"
+  | "path"
+  | "pie"
 
 /**
  * 글리프는 lucide 아이콘이 아니라 이 도구가 실제로 그리는 마크를 축소한 것이다.
@@ -83,6 +91,28 @@ const CHART_TYPES: { value: ChartType; label: string; hint: string; glyph: React
     hint: "두 수치의 관계",
     glyph: (
       <>
+        <circle cx="4.5" cy="13" r="1.8" />
+        <circle cx="8" cy="7.5" r="1.8" />
+        <circle cx="12" cy="10.5" r="1.8" />
+        <circle cx="15.5" cy="4.5" r="1.8" />
+      </>
+    ),
+  },
+  {
+    value: "path",
+    label: "궤적",
+    // 산점도와 달리 "행 순서"가 곧 정보다. 파일에 적힌 순서대로 펜을 잇는다.
+    hint: "점을 행 순서대로 이은 경로",
+    glyph: (
+      <>
+        <polyline
+          points="4.5,13 8,7.5 12,10.5 15.5,4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
         <circle cx="4.5" cy="13" r="1.8" />
         <circle cx="8" cy="7.5" r="1.8" />
         <circle cx="12" cy="10.5" r="1.8" />
