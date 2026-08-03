@@ -8,6 +8,7 @@ export type ChartType =
   | "area"
   | "scatter"
   | "path"
+  | "histogram"
   | "pie"
 
 /**
@@ -117,6 +118,20 @@ const CHART_TYPES: { value: ChartType; label: string; hint: string; glyph: React
         <circle cx="8" cy="7.5" r="1.8" />
         <circle cx="12" cy="10.5" r="1.8" />
         <circle cx="15.5" cy="4.5" r="1.8" />
+      </>
+    ),
+  },
+  {
+    value: "histogram",
+    label: "분포",
+    // 다른 막대는 "범주별 값"이지만 여기 막대는 "그 구간에 몇 줄이 있나"다.
+    hint: "숫자를 구간으로 묶은 빈도",
+    glyph: (
+      <>
+        <rect x="2" y="12" width="3" height="3" rx="1" />
+        <rect x="5.75" y="8" width="3" height="7" rx="1" />
+        <rect x="9.5" y="3.5" width="3" height="11.5" rx="1" />
+        <rect x="13.25" y="9.5" width="3" height="5.5" rx="1" />
       </>
     ),
   },

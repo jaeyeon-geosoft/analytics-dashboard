@@ -15,16 +15,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
 import { ColumnList } from "@/components/column-list"
 import { AGGREGATION_LABELS, type Aggregation } from "@/lib/aggregate"
+import { canDeriveGap, gapColumnName } from "@/lib/derive-column"
 import { ACCEPT_ATTR, formatBytes } from "@/lib/file-constraints"
 import { COLUMN_TYPE_LABELS, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
 import {
   MAPPING_SLOTS,
   candidatesFor,
-  isPointChart,
   lockedReason,
   type Mapping,
   type MappingKey,
   type MappingSlot,
+  usesAggregation,
 } from "@/lib/mapping-slots"
 import type { ParsedFile } from "@/lib/parse-file"
 
@@ -75,7 +76,7 @@ function Hint({ children }: { children: React.ReactNode }) {
 /** 슬롯 설명을 한 곳에 모은 표. 아이콘을 컨트롤마다 두면 그게 더 어수선하다. */
 function MappingGuide({ chartType }: { chartType: ChartType }) {
   const rows = MAPPING_SLOTS[chartType].map((slot) => [slot.label, slot.hint] as const)
-  if (!isPointChart(chartType)) {
+  if (usesAggregation(chartType)) {
     rows.push(["집계", "같은 범주가 여러 줄일 때 합칠 방법"])
   }
 
@@ -217,6 +218,7 @@ export function SettingsSidebar({
   onAggregationChange,
   onSheetChange,
   onHeaderRowChange,
+  onDeriveGap,
   onFile,
 }: {
   dataset: Dataset | null
@@ -234,8 +236,23 @@ export function SettingsSidebar({
   onAggregationChange: (value: Aggregation) => void
   onSheetChange: (name: string) => void
   onHeaderRowChange: (row: number) => void
+  onDeriveGap: (name: string) => void
   onFile: (file: File) => void
 }) {
+  // 시차를 만들 수 있는 컬럼: 시각이 든 날짜 컬럼이고, 아직 안 만든 것.
+  const names = new Set(columns.map((column) => column.name))
+  const gapSources = new Set(
+    columns
+      .filter(
+        (column) =>
+          column.type === "date" &&
+          !names.has(gapColumnName(column.name)) &&
+          data !== null &&
+          canDeriveGap(data.rows, column.name)
+      )
+      .map((column) => column.name)
+  )
+
   return (
     <aside className="flex w-full shrink-0 flex-col border-t border-border lg:h-full lg:w-72 lg:border-t-0 lg:border-r">
       {/*
@@ -360,7 +377,12 @@ export function SettingsSidebar({
               >
                 컬럼 {columns.length}개
               </SectionLabel>
-              <ColumnList columns={columns} onTypeChange={onColumnTypeChange} />
+              <ColumnList
+                columns={columns}
+                onTypeChange={onColumnTypeChange}
+                gapSources={gapSources}
+                onDeriveGap={onDeriveGap}
+              />
             </section>
           )}
 
@@ -400,8 +422,8 @@ export function SettingsSidebar({
                   onValueChange={(column) => onMappingChange(slot.key, column)}
                 />
               ))}
-              {/* 산점도·궤적은 행 하나가 점 하나라 묶을 일이 없다. */}
-              {!isPointChart(chartType) && (
+              {/* 산점도·궤적은 행이 곧 점이고, 히스토그램은 언제나 개수라 고를 게 없다. */}
+              {usesAggregation(chartType) && (
                 <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
                   <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
                     집계

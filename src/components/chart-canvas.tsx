@@ -14,13 +14,19 @@ import type { Dataset } from "@/components/settings-sidebar"
 import {
   AGGREGATION_LABELS,
   buildChartFrame,
+  buildHistogramFrame,
   buildScatterFrame,
   type ChartFrame,
   type ScatterFrame,
 } from "@/lib/aggregate"
 import { MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
 import type { ColumnInfo } from "@/lib/infer-types"
-import { isPointChart, MAPPING_SLOTS, rightValueColumn } from "@/lib/mapping-slots"
+import {
+  isPointChart,
+  MAPPING_SLOTS,
+  rightValueColumn,
+  usesAggregation,
+} from "@/lib/mapping-slots"
 import { MAX_ROWS, type ParsedFile } from "@/lib/parse-file"
 import { cn } from "@/lib/utils"
 
@@ -309,7 +315,9 @@ function ChartCard({
         request,
         frame: isPointChart(chartType)
           ? null
-          : buildChartFrame(chartType, mapping, aggregation, columns, rows),
+          : chartType === "histogram"
+            ? buildHistogramFrame(mapping, rows)
+            : buildChartFrame(chartType, mapping, aggregation, columns, rows),
         scatter: isPointChart(chartType) ? buildScatterFrame(mapping, rows) : null,
       })
     }
@@ -407,7 +415,7 @@ function ChartCard({
             )}
             {aside && <span className="font-mono text-muted-foreground"> · {aside}</span>}
             {/* 집계 방식은 화면에 밝힌다. 몇 줄이 한 마크로 접혔는지가 안 보이면 오독한다. */}
-            {!isPointChart(chartType) && (
+            {usesAggregation(chartType) && (
               <span className="text-muted-foreground"> ({AGGREGATION_LABELS[aggregation]})</span>
             )}
           </p>

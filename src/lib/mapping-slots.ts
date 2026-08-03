@@ -111,6 +111,16 @@ export function isPointChart(chartType: ChartType): boolean {
   return chartType === "scatter" || chartType === "path"
 }
 
+/**
+ * 집계(합계/평균/개수)를 **고를 수 있는** 종류.
+ *
+ * 산점도·궤적은 행 하나가 점 하나라 묶을 일이 없고, 히스토그램은 언제나 개수다
+ * (구간에 몇 줄이 들어갔는지가 곧 막대 높이라 다른 선택지가 성립하지 않는다).
+ */
+export function usesAggregation(chartType: ChartType): boolean {
+  return !isPointChart(chartType) && chartType !== "histogram"
+}
+
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   bar: [CATEGORY, VALUE, SERIES],
   hbar: [CATEGORY, VALUE, SERIES],
@@ -122,6 +132,9 @@ export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   area: [ORDERED_X, NUMERIC_Y, SERIES],
   scatter: POINT_SLOTS,
   path: POINT_SLOTS,
+  // 컬럼 하나가 전부다. 나눌 기준(분할)을 주지 않는 것은, 분포를 겹쳐 그리면 서로를
+  // 가려서 어느 쪽 봉우리인지 못 읽기 때문이다 — 그때는 카드를 나란히 놓는다.
+  histogram: [{ ...VALUE, hint: "구간으로 나눌 숫자" }],
   pie: [CATEGORY, VALUE],
 }
 

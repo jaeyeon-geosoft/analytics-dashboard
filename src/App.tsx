@@ -7,6 +7,7 @@ import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
 import type { Aggregation } from "@/lib/aggregate"
 import { createChart, duplicateChart, MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
+import { addGapColumn } from "@/lib/derive-column"
 import { validateFile } from "@/lib/file-constraints"
 import { parseFile, type ParseOptions } from "@/lib/parse-file"
 import { inferColumns, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
@@ -142,6 +143,14 @@ function App() {
             onAggregationChange={(next: Aggregation) =>
               updateActive((chart) => ({ ...chart, aggregation: next }))
             }
+            onDeriveGap={(name: string) => {
+              if (state.status !== "ready") return
+              const derived = addGapColumn(state.data, name)
+              if (!derived) return
+              // 새 컬럼은 후보로 나타나기만 한다. 묻지도 않았는데 매핑을 바꾸지 않는다.
+              setState({ ...state, data: derived.data })
+              setColumns((previous) => [...previous, derived.column])
+            }}
             onSheetChange={(sheet: string) => source && handleFile(source, { sheet })}
             onHeaderRowChange={(headerRow: number) =>
               source &&

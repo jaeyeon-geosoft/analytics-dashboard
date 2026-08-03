@@ -207,6 +207,115 @@ function compareX(a: string, b: string, xType?: string): number {
   return a.localeCompare(b)
 }
 
+/**
+ * 히스토그램 구간 수의 상·하한. 잘게 쪼개면 표본 노이즈가 봉우리처럼 보이고, 굵게
+ * 묶으면 봉우리가 통째로 사라진다. 이 사이를 벗어나면 폭을 한 칸씩 옮긴다.
+ */
+const MIN_BINS = 5
+const MAX_BINS = 60
+
+/** 1·2·5 × 10ⁿ 사다리. 구간 경계가 눈으로 읽히는 수여야 축이 쓸모 있다. */
+function niceWidth(raw: number): number {
+  const magnitude = 10 ** Math.floor(Math.log10(raw))
+  for (const step of [1, 2, 5]) {
+    if (raw <= step * magnitude) return step * magnitude
+  }
+  return 10 * magnitude
+}
+
+/** 사다리에서 한 칸 위/아래. `1 → 2 → 5 → 10`, 그 반대. */
+function stepWidth(width: number, up: boolean): number {
+  const magnitude = 10 ** Math.floor(Math.log10(width))
+  const digit = Math.round((width / magnitude) * 100) / 100
+  if (up) return (digit < 2 ? 2 : digit < 5 ? 5 : 10) * magnitude
+  return (digit > 5 ? 5 : digit > 2 ? 2 : 0.5) * magnitude
+}
+
+/**
+ * 구간 폭은 Freedman–Diaconis(`2·IQR / ∛n`)로 잡는다. 사분위를 쓰기 때문에 꼬리에
+ * 극단값이 몇 개 섞여도 폭이 끌려가지 않는다 — 장비 로그처럼 99%가 1초 근처인데
+ * 최대가 25초인 데이터에서 전체 범위를 균등 분할하면 막대 하나에 다 들어간다.
+ *
+ * 값이 한 점에 몰려 IQR이 0이면 사분위가 아무것도 말해주지 않으므로 Sturges로 물러난다.
+ */
+function chooseBinWidth(sorted: number[], range: number): number {
+  const n = sorted.length
+  const quantile = (p: number) => sorted[Math.min(n - 1, Math.floor(p * n))]
+  const iqr = quantile(0.75) - quantile(0.25)
+  const raw = iqr > 0 ? (2 * iqr) / Math.cbrt(n) : range / (Math.ceil(Math.log2(n)) + 1)
+
+  let width = niceWidth(raw > 0 ? raw : range / MIN_BINS)
+  // 사다리를 옮기며 구간 수를 범위 안으로. 한 칸이 최소 1.5배라 40번이면 어떤 데이터든 닿는다.
+  for (let guard = 0; guard < 40; guard += 1) {
+    const bins = Math.ceil(range / width)
+    if (bins > MAX_BINS) width = stepWidth(width, true)
+    else if (bins < MIN_BINS) width = stepWidth(width, false)
+    else break
+  }
+  return width
+}
+
+/**
+ * 숫자 컬럼 하나를 구간으로 묶어 개수를 센다. 다른 종류와 달리 **정렬하지 않는다** —
+ * 구간은 순서 자체가 의미라서 큰 것부터 세우면 분포가 아니게 된다.
+ *
+ * 막대와 같은 `ChartFrame`을 내놓기 때문에 렌더러도 표 보기도 그대로 쓴다.
+ */
+export function buildHistogramFrame(
+  rawMapping: Mapping,
+  rows: Record<string, string>[]
+): ChartFrame | null {
+  const { value: column } = activeMapping("histogram", rawMapping)
+  if (!column) return null
+
+  const values: number[] = []
+  for (const row of rows) {
+    const value = toNumber(row[column] ?? "")
+    if (value !== null) values.push(value)
+  }
+  if (values.length === 0) return null
+
+  const sorted = [...values].sort((a, b) => a - b)
+  const min = sorted[0]
+  const max = sorted[sorted.length - 1]
+  const range = max - min
+
+  // 값이 하나뿐인 컬럼(장비 상수처럼)은 나눌 폭이 없다. 억지로 구간을 만들면 "65~66"처럼
+  // 없는 범위를 지어내게 되므로, 그 값 하나짜리 막대로 끝낸다.
+  if (range === 0) {
+    return {
+      rows: [{ x: String(min), s0: values.length }],
+      series: [{ key: "s0", label: column }],
+      xLabel: `${column} (값이 하나뿐)`,
+      yLabel: "행 개수",
+      folded: 0,
+    }
+  }
+
+  const width = chooseBinWidth(sorted, range)
+  const decimals = Math.max(0, -Math.floor(Math.log10(width)))
+  const format = (value: number) => value.toFixed(decimals)
+
+  // 첫 구간은 폭의 배수에서 시작한다. 최소값에서 시작하면 경계가 3.7, 4.2처럼 읽히지 않는다.
+  const first = Math.floor(min / width) * width
+  const count = Math.max(1, Math.ceil((max - first) / width + 1e-9))
+  const counts = new Array<number>(count).fill(0)
+  for (const value of values) {
+    counts[Math.min(count - 1, Math.floor((value - first) / width))] += 1
+  }
+
+  return {
+    rows: counts.map((n, index) => ({
+      x: `${format(first + index * width)}~${format(first + (index + 1) * width)}`,
+      s0: n,
+    })),
+    series: [{ key: "s0", label: column }],
+    xLabel: `${column} (구간 ${format(width)})`,
+    yLabel: "행 개수",
+    folded: 0,
+  }
+}
+
 export function buildScatterFrame(
   rawMapping: Mapping,
   rows: Record<string, string>[]
