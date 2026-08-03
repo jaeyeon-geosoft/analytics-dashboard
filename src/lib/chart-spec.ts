@@ -1,5 +1,5 @@
 import type { ChartType } from "@/components/chart-type-picker"
-import type { Aggregation } from "@/lib/aggregate"
+import type { Aggregation, Reference } from "@/lib/aggregate"
 import type { ColumnInfo } from "@/lib/infer-types"
 import { fillMapping, type Mapping } from "@/lib/mapping-slots"
 
@@ -17,6 +17,7 @@ export type ChartSpec = {
   chartType: ChartType
   mapping: Mapping
   aggregation: Aggregation
+  reference: Reference
 }
 
 // 세션 안에서만 겹치지 않으면 된다. 번호가 그대로 드러나 디버깅도 쉽다.
@@ -29,6 +30,7 @@ export function createChart(columns: ColumnInfo[], chartType: ChartType = "bar")
     chartType,
     mapping: fillMapping({}, chartType, columns),
     aggregation: "sum",
+    reference: "none",
   }
 }
 

@@ -14,12 +14,18 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
 import { ColumnList } from "@/components/column-list"
-import { AGGREGATION_LABELS, type Aggregation } from "@/lib/aggregate"
+import {
+  AGGREGATION_LABELS,
+  REFERENCE_LABELS,
+  type Aggregation,
+  type Reference,
+} from "@/lib/aggregate"
 import { canDeriveGap, gapColumnName } from "@/lib/derive-column"
 import { ACCEPT_ATTR, formatBytes } from "@/lib/file-constraints"
 import { COLUMN_TYPE_LABELS, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
 import {
   MAPPING_SLOTS,
+  allowsReference,
   candidatesFor,
   lockedReason,
   type Mapping,
@@ -216,6 +222,8 @@ export function SettingsSidebar({
   onMappingChange,
   aggregation,
   onAggregationChange,
+  reference,
+  onReferenceChange,
   onSheetChange,
   onHeaderRowChange,
   onDeriveGap,
@@ -234,6 +242,8 @@ export function SettingsSidebar({
   onMappingChange: (key: MappingKey, column?: string) => void
   aggregation: Aggregation
   onAggregationChange: (value: Aggregation) => void
+  reference: Reference
+  onReferenceChange: (value: Reference) => void
   onSheetChange: (name: string) => void
   onHeaderRowChange: (row: number) => void
   onDeriveGap: (name: string) => void
@@ -440,6 +450,29 @@ export function SettingsSidebar({
                       {(Object.keys(AGGREGATION_LABELS) as Aggregation[]).map((option) => (
                         <SelectItem key={option} value={option} className="text-xs">
                           {AGGREGATION_LABELS[option]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {allowsReference(chartType) && (
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
+                  <Label htmlFor="reference" className="text-xs text-muted-foreground">
+                    기준선
+                  </Label>
+                  <Select
+                    value={reference}
+                    onValueChange={(next) => onReferenceChange(next as Reference)}
+                    disabled={columns.length === 0}
+                  >
+                    <SelectTrigger id="reference" size="sm" className="w-full min-w-0 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(REFERENCE_LABELS) as Reference[]).map((option) => (
+                        <SelectItem key={option} value={option} className="text-xs">
+                          {REFERENCE_LABELS[option]}
                         </SelectItem>
                       ))}
                     </SelectContent>

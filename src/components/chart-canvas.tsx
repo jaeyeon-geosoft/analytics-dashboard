@@ -22,6 +22,7 @@ import {
 import { MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
 import type { ColumnInfo } from "@/lib/infer-types"
 import {
+  allowsReference,
   isPointChart,
   MAPPING_SLOTS,
   rightValueColumn,
@@ -279,7 +280,7 @@ function ChartCard({
   const [swapping, setSwapping] = useState(false)
   const frameRef = useRef(0)
   const viewFrameRef = useRef(0)
-  const { chartType, mapping, aggregation } = spec
+  const { chartType, mapping, aggregation, reference } = spec
 
   /*
     집계와 Recharts 렌더는 둘 다 동기라서, 범주가 만 개쯤 되면 그동안 화면이 통째로
@@ -289,8 +290,8 @@ function ChartCard({
   // 입력 묶음의 정체성이 곧 "무엇을 그려야 하는지"다. 결과에 그 묶음을 붙여두면
   // busy를 따로 상태로 들 필요 없이 비교만으로 나온다(effect 안 동기 setState 금지).
   const request = useMemo(
-    () => ({ chartType, mapping, aggregation, columns, rows: data.rows }),
-    [chartType, mapping, aggregation, columns, data.rows]
+    () => ({ chartType, mapping, aggregation, reference, columns, rows: data.rows }),
+    [chartType, mapping, aggregation, reference, columns, data.rows]
   )
   const [built, setBuilt] = useState<{
     request: typeof request
@@ -310,14 +311,16 @@ function ChartCard({
         frameRef.current = requestAnimationFrame(step)
         return
       }
-      const { chartType, mapping, aggregation, columns, rows } = request
+      const { chartType, mapping, aggregation, reference, columns, rows } = request
+      // 기준선을 못 다는 종류에서 고른 값이 남아 있어도 계산에 새어 들어가지 않게 한다.
+      const wanted = allowsReference(chartType) ? reference : "none"
       setBuilt({
         request,
         frame: isPointChart(chartType)
           ? null
           : chartType === "histogram"
-            ? buildHistogramFrame(mapping, rows)
-            : buildChartFrame(chartType, mapping, aggregation, columns, rows),
+            ? buildHistogramFrame(mapping, rows, wanted)
+            : buildChartFrame(chartType, mapping, aggregation, columns, rows, wanted),
         scatter: isPointChart(chartType) ? buildScatterFrame(mapping, rows) : null,
       })
     }

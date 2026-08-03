@@ -20,6 +20,43 @@ const MAX_SLICES = 6
 
 export const OTHER_LABEL = "기타"
 
+/**
+ * 기준선으로 그을 통계치. 임의의 숫자를 받지 않는 것은, 두 가지가 실제로 필요한 전부이고
+ * (명목 주기 = 중앙값, 평균 주기 = 평균) 자유 입력을 열면 그 값이 무엇인지 아무도 모르는
+ * 선이 차트에 남기 때문이다.
+ */
+export type Reference = "none" | "mean" | "median"
+
+export const REFERENCE_LABELS: Record<Reference, string> = {
+  none: "없음",
+  mean: "평균",
+  median: "중앙값",
+}
+
+/** 값 축 위의 한 점. 히스토그램만 범주축이라 어느 구간에 세울지를 함께 들고 있다. */
+export type ChartReference = {
+  value: number
+  /** 범례·라벨에 그대로 나가는 글자. 스냅되더라도 정확한 수는 여기 남는다. */
+  label: string
+  /** 히스토그램 전용 — 이 값이 든 구간의 x 라벨 */
+  atCategory?: string
+}
+
+function statistic(sorted: number[], reference: Reference): number | null {
+  if (reference === "none" || sorted.length === 0) return null
+  if (reference === "median") {
+    const middle = sorted.length >> 1
+    return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+  }
+  return sorted.reduce((sum, value) => sum + value, 0) / sorted.length
+}
+
+function referenceLabel(reference: Reference, value: number): string {
+  return `${REFERENCE_LABELS[reference]} ${value.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  })}`
+}
+
 export type ChartSeries = {
   key: string
   label: string
@@ -37,6 +74,8 @@ export type ChartFrame = {
   y2Label?: string
   /** 원형에서 "기타"로 접힌 범주 수. 다른 종류는 자르지 않으므로 항상 0 */
   folded: number
+  /** 기준선. 고르지 않았으면 없다. */
+  reference?: ChartReference
 }
 
 export type ScatterFrame = {
@@ -82,7 +121,8 @@ export function buildChartFrame(
   rawMapping: Mapping,
   aggregation: Aggregation,
   columns: ColumnInfo[],
-  rows: Record<string, string>[]
+  rows: Record<string, string>[],
+  reference: Reference = "none"
 ): ChartFrame | null {
   const mapping = activeMapping(chartType, rawMapping)
   const orderedByX = chartType === "line" || chartType === "area"
@@ -183,6 +223,17 @@ export function buildChartFrame(
     entries = [...kept, { row: otherRow, total: 0 }]
   }
 
+  // 기준선은 **그려진 값**의 통계다. 축이 둘이면 어느 축의 선인지 말할 수 없어서 걸지 않는다.
+  const plotted = dual
+    ? []
+    : entries.flatMap((entry) =>
+        series.map((entry2) => Number(entry.row[entry2.key] ?? 0)).filter(Number.isFinite)
+      )
+  const stat = statistic(
+    [...plotted].sort((a, b) => a - b),
+    reference
+  )
+
   return {
     rows: entries.map((entry) => entry.row),
     series,
@@ -190,6 +241,7 @@ export function buildChartFrame(
     yLabel: valueColumn ? `${valueColumn} ${AGGREGATION_LABELS[aggregation]}` : "행 개수",
     y2Label: rightColumn ? `${rightColumn} ${AGGREGATION_LABELS[aggregation]}` : undefined,
     folded,
+    reference: stat === null ? undefined : { value: stat, label: referenceLabel(reference, stat) },
   }
 }
 
@@ -263,7 +315,8 @@ function chooseBinWidth(sorted: number[], range: number): number {
  */
 export function buildHistogramFrame(
   rawMapping: Mapping,
-  rows: Record<string, string>[]
+  rows: Record<string, string>[],
+  reference: Reference
 ): ChartFrame | null {
   const { value: column } = activeMapping("histogram", rawMapping)
   if (!column) return null
@@ -304,15 +357,24 @@ export function buildHistogramFrame(
     counts[Math.min(count - 1, Math.floor((value - first) / width))] += 1
   }
 
+  const label = (index: number) =>
+    `${format(first + index * width)}~${format(first + (index + 1) * width)}`
+
+  // 통계치는 구간이 아니라 **원본 값**에서 낸다. 구간 중앙값들로 계산하면 폭만큼 어긋난다.
+  // 다만 x축이 범주축이라 선은 그 값이 든 구간에 선다 — 정확한 수는 라벨이 들고 있다.
+  const stat = statistic(sorted, reference)
+  const at = stat === null ? null : Math.min(count - 1, Math.floor((stat - first) / width))
+
   return {
-    rows: counts.map((n, index) => ({
-      x: `${format(first + index * width)}~${format(first + (index + 1) * width)}`,
-      s0: n,
-    })),
+    rows: counts.map((n, index) => ({ x: label(index), s0: n })),
     series: [{ key: "s0", label: column }],
     xLabel: `${column} (구간 ${format(width)})`,
     yLabel: "행 개수",
     folded: 0,
+    reference:
+      stat === null || at === null || at < 0
+        ? undefined
+        : { value: stat, label: referenceLabel(reference, stat), atCategory: label(at) },
   }
 }
 

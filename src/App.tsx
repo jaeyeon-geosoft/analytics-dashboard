@@ -5,7 +5,7 @@ import { AppHeader } from "@/components/app-header"
 import { SettingsSidebar } from "@/components/settings-sidebar"
 import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
 import type { ChartType } from "@/components/chart-type-picker"
-import type { Aggregation } from "@/lib/aggregate"
+import type { Aggregation, Reference } from "@/lib/aggregate"
 import { createChart, duplicateChart, MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
 import { addGapColumn } from "@/lib/derive-column"
 import { validateFile } from "@/lib/file-constraints"
@@ -142,6 +142,10 @@ function App() {
             aggregation={active.aggregation}
             onAggregationChange={(next: Aggregation) =>
               updateActive((chart) => ({ ...chart, aggregation: next }))
+            }
+            reference={active.reference}
+            onReferenceChange={(next: Reference) =>
+              updateActive((chart) => ({ ...chart, reference: next }))
             }
             onDeriveGap={(name: string) => {
               if (state.status !== "ready") return

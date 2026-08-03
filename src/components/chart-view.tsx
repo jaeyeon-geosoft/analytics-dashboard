@@ -10,6 +10,7 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   Scatter,
   ScatterChart,
   XAxis,
@@ -468,12 +469,46 @@ function CartesianView({
   )
   const legend = multi ? <ChartLegend content={<ChartLegendContent />} /> : null
 
+  /*
+    기준선. 파선인 것은 dataviz의 "격자선을 점선으로 긋지 말 것"과 어긋나지 않는다 —
+    그 규칙은 **그냥 격자선인데** 임계값처럼 읽히는 걸 막는 것이라, 진짜 임계선은 파선이
+    맞다. 색은 시리즈 슬롯을 쓰지 않는다: 기준선은 엔티티가 아니라 주석이고, 빨강을 쓰면
+    "나쁨"이라는 없는 의미가 붙는다. 라벨 글자도 텍스트 색이다(CLAUDE.md).
+
+    히스토그램만 x축이 범주축(구간 라벨)이라 값이 든 구간에 스냅된다. 정확한 수는 축 이름이
+    들고 있다. 나머지는 y축이 수치축이라 그대로 그 자리에 선다.
+
+    선 위에 라벨을 붙이지 않는 것은, 최대값 직접 라벨과 같은 자리를 다투기 때문이다 —
+    분포에서는 기준선이 든 구간이 곧 최빈 구간인 경우가 흔해서 거의 항상 겹친다. 대신 그
+    값이 놓인 **축의 이름**에 적는다. 집계 방식을 적는 자리와 같다.
+  */
+  const referenceAt = frame.reference && {
+    ...(chartType === "histogram"
+      ? { x: frame.reference.atCategory }
+      : { y: frame.reference.value }),
+  }
+  const reference = referenceAt && [
+    // 카드 색을 먼저 깔아 마크에서 떼어 놓는다 — 겹치는 점의 링, 누적 조각 사이의 틈과
+    // 같은 방식이다. 이게 없으면 채도 높은 막대 위에서 파선이 묻힌다.
+    <ReferenceLine key="halo" {...referenceAt} stroke="var(--card)" strokeWidth={4} />,
+    // 격자선은 뒤로 물러나야 하지만 기준선은 다르다 — 읽으라고 있는 주석이라 텍스트 색이다.
+    <ReferenceLine
+      key="line"
+      {...referenceAt}
+      stroke="var(--foreground)"
+      strokeWidth={1.5}
+      strokeDasharray="4 4"
+    />,
+  ]
+  const withReference = (base: string, onThisAxis: boolean) =>
+    frame.reference && onThisAxis ? `${base} · ┄ ${frame.reference.label}` : base
+
   if (chartType === "line" || chartType === "area") {
     const Chart = chartType === "line" ? LineChart : AreaChart
     return (
       <AxisFrame
         xLabel={categoryLabel}
-        yLabel={frame.yLabel}
+        yLabel={withReference(frame.yLabel, true)}
         yRightLabel={frame.y2Label}
         colors={dual ? [SLOTS[0], SLOTS[1]] : undefined}
         plot={plot}
@@ -555,6 +590,7 @@ function CartesianView({
                 />
               ),
             )}
+            {reference}
           </Chart>
         </ChartContainer>
       </AxisFrame>
@@ -564,7 +600,10 @@ function CartesianView({
   return (
     // 가로 막대는 축이 뒤집힌다 — 아래가 값, 왼쪽이 범주.
     <AxisFrame
-      xLabel={horizontal ? frame.yLabel : categoryLabel}
+      // 분포는 값 축이 가로다 — 기준선도 거기 서므로 이름도 그쪽에 붙는다.
+      xLabel={
+        horizontal ? frame.yLabel : withReference(categoryLabel, chartType === "histogram")
+      }
       yLabel={horizontal ? categoryLabel : frame.yLabel}
       plot={plot}
     >
@@ -647,6 +686,7 @@ function CartesianView({
               />
             )
           })}
+          {reference}
         </BarChart>
       </ChartContainer>
     </AxisFrame>

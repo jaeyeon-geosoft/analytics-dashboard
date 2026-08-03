@@ -121,6 +121,16 @@ export function usesAggregation(chartType: ChartType): boolean {
   return !isPointChart(chartType) && chartType !== "histogram"
 }
 
+/**
+ * 기준선(평균·중앙값)을 걸 수 있는 종류.
+ *
+ * 값 축이 하나로 정해지는 곳만이다. 누적 막대는 "무엇의 평균"인지 모호하고, 이중 축이
+ * 켜진 선 차트는 어느 축의 선인지 말할 수 없어 계산 쪽에서 다시 걸러낸다.
+ */
+export function allowsReference(chartType: ChartType): boolean {
+  return chartType === "histogram" || chartType === "line" || chartType === "area"
+}
+
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   bar: [CATEGORY, VALUE, SERIES],
   hbar: [CATEGORY, VALUE, SERIES],
