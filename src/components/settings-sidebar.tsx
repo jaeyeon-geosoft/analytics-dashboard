@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ChartTypePicker, type ChartType } from "@/components/chart-type-picker"
+import { ChartTypePicker } from "@/components/chart-type-picker"
 import { ColumnList } from "@/components/column-list"
 import {
   AGGREGATION_LABELS,
@@ -20,6 +20,9 @@ import {
   type Aggregation,
   type Reference,
 } from "@/lib/aggregate"
+import type { Dataset } from "@/lib/canvas-state"
+import { withChartType, withMapping, type ChartSpec } from "@/lib/chart-spec"
+import type { ChartType } from "@/lib/chart-types"
 import { canDeriveGap, gapColumnName } from "@/lib/derive-column"
 import { ACCEPT_ATTR, formatBytes } from "@/lib/file-constraints"
 import { COLUMN_TYPE_LABELS, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
@@ -28,14 +31,11 @@ import {
   allowsReference,
   candidatesFor,
   lockedReason,
-  type Mapping,
-  type MappingKey,
   type MappingSlot,
   usesAggregation,
 } from "@/lib/mapping-slots"
 import type { ParsedFile } from "@/lib/parse-file"
-
-export type Dataset = { name: string; size: number }
+import { cn } from "@/lib/utils"
 
 /** 헤더 행을 고를 때 그 줄에 뭐가 들어 있는지 보여준다. 번호만으로는 못 고른다. */
 function rowSummary(cells: string[]): string {
@@ -80,8 +80,7 @@ function Hint({ children }: { children: React.ReactNode }) {
 }
 
 /** 슬롯 설명을 한 곳에 모은 표. 아이콘을 컨트롤마다 두면 그게 더 어수선하다. */
-function
-MappingGuide({ chartType }: { chartType: ChartType }) {
+function MappingGuide({ chartType }: { chartType: ChartType }) {
   const rows = MAPPING_SLOTS[chartType].map((slot) => [slot.label, slot.hint] as const)
   if (usesAggregation(chartType)) {
     rows.push(["집계", "같은 범주가 여러 줄일 때 합칠 방법"])
@@ -120,6 +119,9 @@ function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: Re
   )
 }
 
+/** 라벨 + 선택지 한 줄. 격자가 어긋나면 라벨과 Select의 짝이 안 보인다. */
+const ROW = "grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2"
+
 /**
  * Radix SelectItem은 빈 문자열 value를 못 받아서 "없음"에 별도 값이 필요하다.
  * 컬럼 쪽에 접두사를 붙여두면 `없음`이라는 이름의 컬럼이 있어도 겹치지 않는다.
@@ -157,7 +159,7 @@ function MappingSelect({
   const disabled = candidates.length === 0 || Boolean(locked)
 
   return (
-    <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
+    <div className={ROW}>
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {slot.label}
       </Label>
@@ -210,21 +212,53 @@ function MappingSelect({
   )
 }
 
+/** 집계·기준선처럼 선택지가 고정된 줄. 매핑과 같은 격자에 선다. */
+function ChoiceRow<T extends string>({
+  id,
+  label,
+  value,
+  labels,
+  disabled,
+  onValueChange,
+}: {
+  id: string
+  label: string
+  value: T
+  /** 값 → 화면에 보일 이름. 키 순서가 곧 목록 순서다. */
+  labels: Record<T, string>
+  disabled?: boolean
+  onValueChange: (value: T) => void
+}) {
+  return (
+    <div className={ROW}>
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
+      <Select value={value} onValueChange={(next) => onValueChange(next as T)} disabled={disabled}>
+        <SelectTrigger id={id} size="sm" className="w-full min-w-0 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {(Object.keys(labels) as T[]).map((option) => (
+            <SelectItem key={option} value={option} className="text-xs">
+              {labels[option]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
 export function SettingsSidebar({
   dataset,
   data,
   columns,
   onColumnTypeChange,
+  chart,
   chartNumber,
   chartCount,
-  chartType,
-  onChartTypeChange,
-  mapping,
-  onMappingChange,
-  aggregation,
-  onAggregationChange,
-  reference,
-  onReferenceChange,
+  onChartChange,
   onSheetChange,
   onHeaderRowChange,
   onDeriveGap,
@@ -234,22 +268,22 @@ export function SettingsSidebar({
   data: ParsedFile | null
   columns: ColumnInfo[]
   onColumnTypeChange: (name: string, type: ColumnType) => void
-  /** 지금 편집 중인 카드의 번호. 캔버스의 같은 배지와 짝이 된다. */
+  /**
+   * 지금 편집 중인 카드. 종류·매핑·집계·기준선은 한 덩어리라 통째로 받는다 —
+   * 넷을 값·핸들러 여덟 개로 풀어 받으면 사이드바가 쓰지도 않는 것을 나르기만 한다.
+   */
+  chart: ChartSpec
+  /** 그 카드의 번호. 캔버스의 같은 배지와 짝이 된다. */
   chartNumber: number
   chartCount: number
-  chartType: ChartType
-  onChartTypeChange: (value: ChartType) => void
-  mapping: Mapping
-  onMappingChange: (key: MappingKey, column?: string) => void
-  aggregation: Aggregation
-  onAggregationChange: (value: Aggregation) => void
-  reference: Reference
-  onReferenceChange: (value: Reference) => void
+  onChartChange: (next: ChartSpec) => void
   onSheetChange: (name: string) => void
   onHeaderRowChange: (row: number) => void
   onDeriveGap: (name: string) => void
   onFile: (file: File) => void
 }) {
+  const { chartType, mapping, aggregation, reference } = chart
+
   // 시차를 만들 수 있는 컬럼: 시각이 든 날짜 컬럼이고, 아직 안 만든 것.
   const names = new Set(columns.map((column) => column.name))
   const gapSources = new Set(
@@ -320,7 +354,7 @@ export function SettingsSidebar({
 
             {/* 헤더가 1행이 아닌 파일(제목 줄이 위에 붙은 리포트)을 위한 선택. */}
             {data && data.preview.length > 1 && (
-              <div className="mt-2 grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
+              <div className={cn("mt-2", ROW)}>
                 <div className="flex items-center gap-1">
                   <Label htmlFor="header-row" className="text-xs text-muted-foreground">
                     헤더 행
@@ -355,7 +389,7 @@ export function SettingsSidebar({
 
             {/* 시트가 하나뿐이면 고를 게 없다. */}
             {data && data.sheets.length > 1 && (
-              <div className="mt-2 grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
+              <div className={cn("mt-2", ROW)}>
                 <Label htmlFor="sheet" className="text-xs text-muted-foreground">
                   시트
                 </Label>
@@ -378,13 +412,13 @@ export function SettingsSidebar({
           {columns.length > 0 && (
             <section>
               <SectionLabel
-                  hint={
-                    <>
-                      컬럼의 값이 맞는지 확인하세요.
-                      <br />
-                      수정하면 아래 선택지가 자동으로 바뀝니다.
-                    </>
-                  }
+                hint={
+                  <>
+                    컬럼의 값이 맞는지 확인하세요.
+                    <br />
+                    수정하면 아래 선택지가 자동으로 바뀝니다.
+                  </>
+                }
               >
                 컬럼 {columns.length}개
               </SectionLabel>
@@ -415,7 +449,7 @@ export function SettingsSidebar({
             <SectionLabel>차트 종류</SectionLabel>
             <ChartTypePicker
               value={chartType}
-              onValueChange={onChartTypeChange}
+              onValueChange={(next) => onChartChange(withChartType(chart, next, columns))}
               disabled={!dataset}
             />
           </section>
@@ -430,55 +464,29 @@ export function SettingsSidebar({
                   columns={columns}
                   value={mapping[slot.key]}
                   locked={lockedReason(slot, chartType, mapping, aggregation === "count")}
-                  onValueChange={(column) => onMappingChange(slot.key, column)}
+                  onValueChange={(column) => onChartChange(withMapping(chart, slot.key, column))}
                 />
               ))}
               {/* 산점도·궤적은 행 하나가 점 하나라 묶을 일이 없다. */}
               {usesAggregation(chartType) && (
-                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
-                  <Label htmlFor="aggregation" className="text-xs text-muted-foreground">
-                    집계
-                  </Label>
-                  <Select
-                    value={aggregation}
-                    onValueChange={(next) => onAggregationChange(next as Aggregation)}
-                    disabled={columns.length === 0}
-                  >
-                    <SelectTrigger id="aggregation" size="sm" className="w-full min-w-0 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(AGGREGATION_LABELS) as Aggregation[]).map((option) => (
-                        <SelectItem key={option} value={option} className="text-xs">
-                          {AGGREGATION_LABELS[option]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <ChoiceRow<Aggregation>
+                  id="aggregation"
+                  label="집계"
+                  value={aggregation}
+                  labels={AGGREGATION_LABELS}
+                  disabled={columns.length === 0}
+                  onValueChange={(next) => onChartChange({ ...chart, aggregation: next })}
+                />
               )}
               {allowsReference(chartType) && (
-                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
-                  <Label htmlFor="reference" className="text-xs text-muted-foreground">
-                    기준선
-                  </Label>
-                  <Select
-                    value={reference}
-                    onValueChange={(next) => onReferenceChange(next as Reference)}
-                    disabled={columns.length === 0}
-                  >
-                    <SelectTrigger id="reference" size="sm" className="w-full min-w-0 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(REFERENCE_LABELS) as Reference[]).map((option) => (
-                        <SelectItem key={option} value={option} className="text-xs">
-                          {REFERENCE_LABELS[option]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <ChoiceRow<Reference>
+                  id="reference"
+                  label="기준선"
+                  value={reference}
+                  labels={REFERENCE_LABELS}
+                  disabled={columns.length === 0}
+                  onValueChange={(next) => onChartChange({ ...chart, reference: next })}
+                />
               )}
             </div>
           </section>

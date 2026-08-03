@@ -26,13 +26,14 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
-import type { ChartType } from "@/components/chart-type-picker"
-import { isPointChart, isTimeline } from "@/lib/mapping-slots"
+import type { ChartType } from "@/lib/chart-types"
+import { isTimeline } from "@/lib/mapping-slots"
 import { cn } from "@/lib/utils"
 import {
   OTHER_LABEL,
   type ChartFrame,
   type ChartSeries,
+  type PlotData,
   type ScatterFrame,
 } from "@/lib/aggregate"
 
@@ -61,6 +62,11 @@ const OTHER_FILL = "var(--muted-foreground)"
 const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" }
 const GRID = "var(--border)"
 
+/** 시리즈가 하나뿐이면 색을 나눌 이유가 없다. 여럿일 때만 슬롯 순서대로. */
+function seriesColor(index: number, multi: boolean): string {
+  return multi ? SLOTS[index] : SINGLE
+}
+
 /** 축 눈금은 자릿수를 줄여 읽히게 한다. 1234567 → 1.2M */
 function compact(value: number): string {
   if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
@@ -76,7 +82,7 @@ function configFor(series: ChartSeries[]): ChartConfig {
         // 축이 둘이면 범례가 어느 축의 선인지까지 말해야 한다. 색만으로는 왼쪽 눈금을
         // 읽어야 할지 오른쪽을 읽어야 할지 알 수 없다.
         label: entry.axis ? `${entry.label} (${entry.axis === "right" ? "우" : "좌"})` : entry.label,
-        color: series.length === 1 ? SINGLE : SLOTS[index],
+        color: seriesColor(index, series.length > 1),
       },
     ]),
   )
@@ -136,37 +142,103 @@ function sharedPrefix(rows: Record<string, string | number>[]): string {
   return trimmed.length >= MIN_PREFIX && trimmed.length < shortest ? trimmed : ""
 }
 
-/** 직접 라벨이 붙을 자리를 담는 필드. 나머지 행은 빈 문자열이라 아무것도 안 그려진다. */
-const SPOT = "__spot"
-
-/**
- * 한 점에만 값을 적어 넣는다. 라벨을 render prop으로 그리는 대신 데이터에 얹으면
- * Recharts의 `LabelList`가 알아서 위치를 잡는다.
- */
-function withSpotLabel(frame: ChartFrame, timeline: boolean) {
-  const key = frame.series[0]?.key
-  if (!key || frame.rows.length === 0) return frame.rows
-
-  const spot = timeline
-    ? frame.rows.length - 1 // 최신값
-    : frame.rows.reduce(
-        (best, row, index) => (Number(row[key]) > Number(frame.rows[best][key]) ? index : best),
-        0
-      ) // 최대값
-
-  return frame.rows.map((row, index) => ({
-    ...row,
-    [SPOT]: index === spot ? Number(row[key]).toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
-  }))
+type CategoryAxis = {
+  /** 축 이름. 떼어낸 공통부를 여기에 한 번만 적는다. */
+  label: string
+  /** 눈금 하나를 글자로. 공통부를 떼고 남은 것을 `max`자에서 자른다. */
+  format: (value: string, max: number) => string
+  /**
+   * 가로로 놓인 눈금에 허용할 글자 수. 공통부를 뗀 라벨은 남은 글자가 전부 의미 있는
+   * 정보라 더 보여준다. 세로 축(가로 막대)은 폭이 96px로 고정이라 늘리지 않는다 —
+   * 늘리면 플롯이 그만큼 좁아진다.
+   */
+  max: number
 }
 
-/** 값·라벨 글자는 시리즈 색이 아니라 텍스트 색을 입는다(CLAUDE.md). */
-const SPOT_LABEL = {
-  dataKey: SPOT,
-  fill: "var(--foreground)",
-  fontSize: 11,
-  fontWeight: 500,
-} as const
+function useCategoryAxis(frame: ChartFrame): CategoryAxis {
+  const prefix = useMemo(() => sharedPrefix(frame.rows), [frame.rows])
+  return useMemo(
+    () => ({
+      label: prefix ? `${frame.xLabel} (앞 "${prefix}" 공통)` : frame.xLabel,
+      format: (value: string, max: number) => truncate(String(value).slice(prefix.length), max),
+      max: prefix ? 16 : 10,
+    }),
+    [frame.xLabel, prefix]
+  )
+}
+
+/**
+ * 값 축의 이름. 기준선을 골랐으면 그 값을 여기에 적는다 — 선 위에 붙이면 최대값
+ * 직접 라벨과 같은 자리를 다툰다. 집계 방식을 적는 자리와 같다.
+ */
+function valueAxisName(frame: ChartFrame): string {
+  return frame.reference ? `${frame.yLabel} · ┄ ${frame.reference.label}` : frame.yLabel
+}
+
+/**
+ * 기준선.
+ *
+ * 파선인 것은 dataviz의 "격자선을 점선으로 긋지 말 것"과 어긋나지 않는다 — 그 규칙은
+ * **그냥 격자선인데** 임계값처럼 읽히는 걸 막는 것이라, 진짜 임계선은 파선이 맞다.
+ * 색은 시리즈 슬롯을 쓰지 않는다: 기준선은 엔티티가 아니라 주석이고, 빨강을 쓰면
+ * "나쁨"이라는 없는 의미가 붙는다.
+ *
+ * Recharts가 자식 엘리먼트를 직접 훑기 때문에 컴포넌트로 감쌀 수 없다. 배열로 돌려준다.
+ */
+function referenceLines(frame: ChartFrame, horizontal: boolean) {
+  if (!frame.reference) return null
+  // 기준선은 언제나 **값 축** 위에 선다. 가로 막대는 축이 뒤집혀 값이 가로다.
+  // 두 갈래의 합집합을 그대로 두면 Recharts의 제네릭이 한쪽으로 좁혀져 안 맞는다.
+  const at = horizontal ? { x: frame.reference.value } : { y: frame.reference.value }
+  return [
+    // 카드 색을 먼저 깔아 마크에서 떼어 놓는다 — 겹치는 점의 링, 누적 조각 사이의 틈과
+    // 같은 방식이다. 이게 없으면 채도 높은 막대 위에서 파선이 묻힌다.
+    <ReferenceLine key="halo" {...at} stroke="var(--card)" strokeWidth={4} />,
+    // 격자선은 뒤로 물러나야 하지만 기준선은 다르다 — 읽으라고 있는 주석이라 텍스트 색이다.
+    <ReferenceLine
+      key="line"
+      {...at}
+      stroke="var(--foreground)"
+      strokeWidth={1.5}
+      strokeDasharray="4 4"
+    />,
+  ]
+}
+
+/** 눈금이 196,323 같은 수로 끝나지 않게 한 자리 위로 올린다. */
+function niceCeil(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  const magnitude = 10 ** Math.floor(Math.log10(value))
+  return Math.ceil(value / magnitude) * magnitude
+}
+
+/**
+ * 값 축의 범위. 창을 옮길 때마다 축이 다시 잡히면 창끼리 비교가 거짓말이 되므로
+ * **보이는 창이 아니라 전체**를 기준으로 고정한다.
+ *
+ * 음수가 섞이면 0을 바닥으로 잡을 수 없다. 그때는 `undefined`로 Recharts에 맡긴다.
+ */
+function valueDomain(
+  frame: ChartFrame,
+  series: ChartSeries[],
+  stacked: boolean
+): [number, number] | undefined {
+  let peak = 0
+  for (const row of frame.rows) {
+    if (stacked) {
+      let total = 0
+      for (const entry of series) total += Number(row[entry.key]) || 0
+      if (total > peak) peak = total
+    } else {
+      for (const entry of series) {
+        const value = Number(row[entry.key]) || 0
+        if (value > peak) peak = value
+      }
+    }
+  }
+  const top = niceCeil(peak)
+  return top > 0 ? [0, top] : undefined
+}
 
 /** 마크 하나가 이보다 좁아지면 못 읽는다. 이 밑으로 내려가면 창을 잘라 스크롤로 넘긴다. */
 const MIN_SLOT = 28
@@ -189,12 +261,15 @@ type PlotWindow = {
  * 그만큼 만드느라 화면이 십여 초 멈췄다. 그릴 수 있는 만큼만 잘라 넘기고 나머지는
  * 스크롤바로 옮겨 본다. 마크 수가 화면 크기에 묶여서 범주가 몇 개든 비용이 같다.
  *
+ * **마크 하나가 SVG 노드 하나인 종류(막대)에만 쓴다.** 선·영역은 점이 몇 개든
+ * `<path>` 하나라 자를 이유가 없고, 자르면 시계열의 모양 자체를 못 본다.
+ *
  * **스크롤바는 반드시 플롯 바깥에 둔다.** 플롯 자체에 `overflow`를 걸면 스크롤바가
  * 생겼다 사라지며 가용 폭이 15px씩 진동하고, ResponsiveContainer가 그때마다 다시
  * 측정해 초당 수천 번 리렌더한다(실제로 겪었다). 여기서 크기를 재는 상자는 절대
  * 스크롤하지 않으므로 그 되먹임이 없다.
  */
-function usePlotWindow(count: number, vertical: boolean, slot: number): PlotWindow {
+function usePlotWindow(count: number, vertical: boolean): PlotWindow {
   const plotRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const [extent, setExtent] = useState(0)
@@ -211,8 +286,7 @@ function usePlotWindow(count: number, vertical: boolean, slot: number): PlotWind
     return () => observer.disconnect()
   }, [vertical])
 
-  // slot이 0이면 창을 쓰지 않는다 — 전부 그린다.
-  const size = slot > 0 ? Math.max(1, Math.floor(extent / slot)) : count
+  const size = Math.max(1, Math.floor(extent / MIN_SLOT))
   const limit = Math.max(0, count - size)
   // 컬럼이나 차트 종류가 바뀌면 범주 수가 줄어든다. 렌더에는 잘라낸 값을 쓴다.
   const offset = Math.min(start, limit)
@@ -272,12 +346,6 @@ function usePlotWindow(count: number, vertical: boolean, slot: number): PlotWind
 }
 
 /**
- * 축 이름은 Recharts의 `label` 대신 바깥에 HTML로 둔다. `insideLeft` 회전 라벨은
- * 눈금과 겹치고 폭을 예측할 수 없다. 여기 두면 텍스트 토큰도 그대로 쓸 수 있다.
- *
- * `plot`을 주면 창 스크롤바가 붙는다 — 가로 막대는 오른쪽, 나머지는 아래.
- */
-/**
  * 세로로 세운 값 축 이름.
  *
  * 글자 수로 자르면 공간이 남는데도 잘린다 — 축 이름에 붙는 "(앞 … 공통)"이 통째로
@@ -313,6 +381,13 @@ function AxisName({
   )
 }
 
+/**
+ * 축 이름은 Recharts의 `label` 대신 바깥에 HTML로 둔다. `insideLeft` 회전 라벨은
+ * 눈금과 겹치고 폭을 예측할 수 없다. 여기 두면 텍스트 토큰도 그대로 쓸 수 있다.
+ *
+ * `plot`을 주면 창 스크롤바가 붙는다 — 가로 막대는 오른쪽, 세로 막대는 아래.
+ * 창을 쓰지 않는 종류(선·영역·산점도)는 주지 않는다.
+ */
 function AxisFrame({
   xLabel,
   yLabel,
@@ -327,7 +402,6 @@ function AxisFrame({
   yRightLabel?: string
   /** 이중 축일 때 두 축 이름에 붙일 선 색 */
   colors?: [string, string]
-  /** 없으면 스크롤 없이 그대로 채운다(산점도) */
   plot?: PlotWindow
   children: React.ReactNode
 }) {
@@ -361,157 +435,56 @@ function AxisFrame({
 }
 
 /**
- * 값 축의 상한. 창을 옮길 때마다 축이 다시 잡히면 창끼리 비교가 거짓말이 되므로
- * **보이는 창이 아니라 전체**를 기준으로 고정한다.
+ * 그릴 것을 종류에 맞는 렌더러로 넘긴다.
+ *
+ * 네 갈래는 축 구성부터 다르다 — 시계열은 점을 전부 그리고 이중 축이 있을 수 있고,
+ * 막대는 창으로 잘라 그리며 최대값에 라벨을 붙이고, 원형과 산점도는 범주 축이 아예
+ * 없다. 한 함수에 모아두면 어느 변수가 어느 갈래의 것인지 읽어낼 수 없다.
  */
-function peakValue(frame: ChartFrame, stacked: boolean, series: ChartSeries[]): number {
-  let peak = 0
-  for (const row of frame.rows) {
-    if (stacked) {
-      let total = 0
-      for (const entry of series) total += Number(row[entry.key]) || 0
-      if (total > peak) peak = total
-    } else {
-      for (const entry of series) {
-        const value = Number(row[entry.key]) || 0
-        if (value > peak) peak = value
-      }
-    }
+export function ChartView({ chartType, plot }: { chartType: ChartType; plot: PlotData }) {
+  if (plot.kind === "scatter") {
+    return <ScatterView frame={plot.frame} connected={chartType === "path"} />
   }
-  return peak
+  if (chartType === "pie") return <PieView frame={plot.frame} />
+  if (isTimeline(chartType)) return <TimelineView frame={plot.frame} chartType={chartType} />
+  return <BarView frame={plot.frame} chartType={chartType} />
 }
 
-/** 눈금이 196,323 같은 수로 끝나지 않게 한 자리 위로 올린다. */
-function niceCeil(value: number): number {
-  if (!Number.isFinite(value) || value <= 0) return 0
-  const magnitude = 10 ** Math.floor(Math.log10(value))
-  return Math.ceil(value / magnitude) * magnitude
-}
-
-export function ChartView({
-  chartType,
-  frame,
-  scatter,
-}: {
-  chartType: ChartType
-  frame: ChartFrame | null
-  scatter: ScatterFrame | null
-}) {
-  if (isPointChart(chartType)) {
-    if (!scatter) return null
-    return <ScatterView frame={scatter} connected={chartType === "path"} />
-  }
-  if (!frame) return null
-  if (chartType === "pie") return <PieView frame={frame} />
-  return <CartesianView chartType={chartType} frame={frame} />
-}
-
-function CartesianView({
-  chartType,
-  frame,
-}: {
-  chartType: ChartType
-  frame: ChartFrame
-}) {
+/**
+ * 선·영역.
+ *
+ * **창으로 자르지 않는다.** 점이 몇 개든 `<path>` 하나라 노드가 늘지 않고, 자르면
+ * 5시간짜리 파형의 모양을 영영 볼 수 없다. 점 수는 집계 쪽에서 이미 줄여 놓았다
+ * (`downsample` — 구간마다 최소·최대를 남긴다).
+ */
+function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType }) {
   const config = configFor(frame.series)
   const multi = frame.series.length > 1
-  const horizontal = chartType === "hbar"
-  const stacked = chartType === "stacked"
-  const timeline = isTimeline(chartType)
   // 오른쪽 축에 놓인 시리즈가 있으면 이중 축이다(선 차트에서만 생긴다).
   const dual = frame.series.some((entry) => entry.axis === "right")
-
-  /*
-    창은 **마크가 노드마다 하나씩 생기는 종류에만** 필요하다. 막대 만 개는 `<rect>` 만
-    개라 화면이 십여 초 멈추지만, 선·영역은 점이 몇 개든 `<path>` 하나다 — 노드가 늘지
-    않으니 자를 이유가 없다. 자르면 오히려 5시간짜리 시계열의 모양을 볼 수 없다.
-  */
-  const plot = usePlotWindow(frame.rows.length, horizontal, timeline ? 0 : MIN_SLOT)
-
-  // 의미 있는 지점 하나만 직접 라벨한다 — 막대는 최대값, 선·영역은 최신값.
-  // 모든 점에 숫자를 찍으면 아무도 안 읽는다(CLAUDE.md). 나머지 값은 축과 툴팁,
-  // 표 보기가 맡는다. 시리즈가 여럿이면 끝점이 서로 겹칠 수 있어 붙이지 않는다.
-  //
-  // 라벨을 먼저 붙이고 자른다 — 그래야 창 안의 최대가 아니라 진짜 최대에만 붙는다.
-  //
-  // 시계열은 이 방식을 쓰지 않는다. `LabelList`는 **점마다 `<text>`를 하나씩** 만드는데,
-  // 값이 적히는 건 한 점뿐인데도 3,002개가 생겨 렌더가 30초 걸렸다(측정). 창으로 40개만
-  // 그릴 때는 드러나지 않던 비용이다. 대신 아래에서 그 한 점에만 주석을 단다.
-  const labeled = useMemo(
-    () => (multi || timeline ? frame.rows : withSpotLabel(frame, false)),
-    [frame, multi, timeline]
-  )
-  const rows = useMemo(
-    () => labeled.slice(plot.start, plot.start + plot.size),
-    [labeled, plot.start, plot.size]
-  )
+  const axis = useCategoryAxis(frame)
+  const rows = frame.rows
 
   // 축이 둘이면 최대값도 축마다 따로 잡는다 — 한 스케일로 묶으면 오른쪽 축을 세운
   // 이유가 없어진다. 대신 **둘 다 0에서 시작**한다. 두 축을 임의로 어긋나게 맞추면
   // 선이 교차하는 자리가 달라져서 데이터에 없는 상관관계가 보인다.
-  const [valueDomain, rightDomain] = useMemo(() => {
-    // 음수가 섞이면 0을 바닥으로 잡을 수 없다. 그때는 Recharts에 맡긴다.
-    const domainOf = (subset: ChartSeries[]): [number, number] | undefined => {
-      const peak = niceCeil(peakValue(frame, stacked, subset))
-      return peak > 0 ? [0, peak] : undefined
-    }
-    if (!dual) return [domainOf(frame.series), undefined]
+  const [leftDomain, rightDomain] = useMemo(() => {
+    if (!dual) return [valueDomain(frame, frame.series, false), undefined]
     return [
-      domainOf(frame.series.filter((entry) => entry.axis !== "right")),
-      domainOf(frame.series.filter((entry) => entry.axis === "right")),
+      valueDomain(frame, frame.series.filter((entry) => entry.axis !== "right"), false),
+      valueDomain(frame, frame.series.filter((entry) => entry.axis === "right"), false),
     ]
-  }, [frame, stacked, dual])
-
-  const prefix = useMemo(() => sharedPrefix(frame.rows), [frame.rows])
-  const category = (value: string, max: number) => truncate(String(value).slice(prefix.length), max)
-  const categoryLabel = prefix ? `${frame.xLabel} (앞 "${prefix}" 공통)` : frame.xLabel
-  // 공통부를 뗀 라벨은 남은 글자가 전부 의미 있는 정보라 더 보여준다. 가로로 놓인 축은
-  // 서로 겹치는 눈금을 Recharts가 알아서 감춘다. 세로 축(가로 막대)은 폭이 96px로
-  // 고정이라 늘리지 않는다 — 늘리면 플롯이 그만큼 좁아진다.
-  const acrossMax = prefix ? 16 : 10
-
-  const grid = (
-    <CartesianGrid
-      stroke={GRID}
-      strokeWidth={1}
-      vertical={horizontal}
-      horizontal={!horizontal}
-    />
-  )
-  const legend = multi ? <ChartLegend content={<ChartLegendContent />} /> : null
+  }, [frame, dual])
 
   /*
-    기준선. 파선인 것은 dataviz의 "격자선을 점선으로 긋지 말 것"과 어긋나지 않는다 —
-    그 규칙은 **그냥 격자선인데** 임계값처럼 읽히는 걸 막는 것이라, 진짜 임계선은 파선이
-    맞다. 색은 시리즈 슬롯을 쓰지 않는다: 기준선은 엔티티가 아니라 주석이고, 빨강을 쓰면
-    "나쁨"이라는 없는 의미가 붙는다. 라벨 글자도 텍스트 색이다(CLAUDE.md).
+    최신값 한 점에만 직접 라벨. 모든 점에 숫자를 찍으면 아무도 안 읽는다(CLAUDE.md).
+    시리즈가 여럿이면 끝점이 서로 겹쳐 어느 선의 값인지 헷갈리므로 붙이지 않는다.
 
-    선 위에 라벨을 붙이지 않는 것은, 최대값 직접 라벨과 같은 자리를 다투기 때문이다.
-    대신 그 값이 놓인 **축의 이름**에 적는다 — 집계 방식을 적는 자리와 같다.
+    막대 쪽이 쓰는 `LabelList`(`label` prop)를 여기서는 쓸 수 없다. 값이 한 점에만
+    적혀도 **점마다 `<text>`를 하나씩** 만들어서, 3,002개가 생기며 렌더가 30초
+    걸렸다(측정). `ReferenceDot`은 노드 하나로 끝난다.
   */
-  // 기준선은 언제나 **값 축** 위에 선다. 가로 막대는 축이 뒤집혀 값이 가로다.
-  // 두 갈래의 합집합을 그대로 두면 Recharts의 제네릭이 한쪽으로 좁혀져 안 맞는다.
-  const referenceAt: { x?: number; y?: number } | undefined =
-    frame.reference &&
-    (horizontal ? { x: frame.reference.value } : { y: frame.reference.value })
-  const reference = referenceAt && [
-    // 카드 색을 먼저 깔아 마크에서 떼어 놓는다 — 겹치는 점의 링, 누적 조각 사이의 틈과
-    // 같은 방식이다. 이게 없으면 채도 높은 막대 위에서 파선이 묻힌다.
-    <ReferenceLine key="halo" {...referenceAt} stroke="var(--card)" strokeWidth={4} />,
-    // 격자선은 뒤로 물러나야 하지만 기준선은 다르다 — 읽으라고 있는 주석이라 텍스트 색이다.
-    <ReferenceLine
-      key="line"
-      {...referenceAt}
-      stroke="var(--foreground)"
-      strokeWidth={1.5}
-      strokeDasharray="4 4"
-    />,
-  ]
-  const withReference = (base: string, onThisAxis: boolean) =>
-    frame.reference && onThisAxis ? `${base} · ┄ ${frame.reference.label}` : base
-
-  // 시계열의 최신값 한 점. 노드 하나로 끝난다(위 `labeled` 주석 참고).
-  const last = timeline && !multi ? frame.rows[frame.rows.length - 1] : undefined
+  const last = multi ? undefined : rows[rows.length - 1]
   const lastKey = frame.series[0]?.key
   const spot = last && lastKey !== undefined && (
     <ReferenceDot
@@ -528,111 +501,161 @@ function CartesianView({
     />
   )
 
-  if (chartType === "line" || chartType === "area") {
-    const Chart = chartType === "line" ? LineChart : AreaChart
-    return (
-      <AxisFrame
-        xLabel={categoryLabel}
-        yLabel={withReference(frame.yLabel, true)}
-        yRightLabel={frame.y2Label}
-        colors={dual ? [SLOTS[0], SLOTS[1]] : undefined}
-        plot={plot}
-      >
-        <ChartContainer config={config} className="absolute inset-0 aspect-auto">
-          <Chart
-            data={rows}
-            // 최신값 라벨이 마지막 점 위에 놓인다. 절반이 오른쪽으로 나가므로 자리를 둔다.
-            margin={{ top: 24, right: multi ? 16 : 40, bottom: 4, left: 4 }}
-          >
-            {grid}
-            {/*
-              눈금 간격을 반드시 숫자로 준다. 안 주면 Recharts가 어느 눈금을 감출지
-              정하려고 **모든 라벨의 폭을 잰다** — 창을 쓸 때는 40개뿐이라 드러나지
-              않았지만, 시계열 전체를 그리면 3,000개를 재느라 95초를 잡아먹었다.
-            */}
-            <XAxis
-              dataKey="x"
-              tick={AXIS_TICK}
-              tickLine={false}
-              axisLine={{ stroke: GRID }}
-              interval={Math.max(0, Math.ceil(rows.length / 12) - 1)}
-              tickFormatter={(value: string) => category(value, acrossMax)}
-            />
-            {/*
-              왼쪽 축은 id를 주지 않는다 — Recharts의 기본 id(0)를 그대로 써야
-              `CartesianGrid`(역시 기본 id를 본다)의 가로 격자선이 살아 있다. 오른쪽만
-              별도 id를 갖고, 격자선은 왼쪽 눈금을 따른다.
-            */}
+  const Chart = chartType === "line" ? LineChart : AreaChart
+
+  return (
+    <AxisFrame
+      xLabel={axis.label}
+      yLabel={valueAxisName(frame)}
+      yRightLabel={frame.y2Label}
+      colors={dual ? [SLOTS[0], SLOTS[1]] : undefined}
+    >
+      <ChartContainer config={config} className="absolute inset-0 aspect-auto">
+        <Chart
+          data={rows}
+          // 최신값 라벨이 마지막 점 위에 놓인다. 절반이 오른쪽으로 나가므로 자리를 둔다.
+          margin={{ top: 24, right: multi ? 16 : 40, bottom: 4, left: 4 }}
+        >
+          <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
+          {/*
+            눈금 간격을 반드시 숫자로 준다. 안 주면 Recharts가 어느 눈금을 감출지
+            정하려고 **모든 라벨의 폭을 잰다** — 창을 쓰는 막대에서는 40개뿐이라
+            드러나지 않지만, 시계열 전체를 그리면 3,000개를 재느라 95초를 잡아먹었다.
+          */}
+          <XAxis
+            dataKey="x"
+            tick={AXIS_TICK}
+            tickLine={false}
+            axisLine={{ stroke: GRID }}
+            interval={Math.max(0, Math.ceil(rows.length / 12) - 1)}
+            tickFormatter={(value: string) => axis.format(value, axis.max)}
+          />
+          {/*
+            왼쪽 축은 id를 주지 않는다 — Recharts의 기본 id(0)를 그대로 써야
+            `CartesianGrid`(역시 기본 id를 본다)의 가로 격자선이 살아 있다. 오른쪽만
+            별도 id를 갖고, 격자선은 왼쪽 눈금을 따른다.
+          */}
+          <YAxis
+            tick={AXIS_TICK}
+            tickLine={false}
+            axisLine={false}
+            width={52}
+            domain={leftDomain}
+            tickFormatter={compact}
+          />
+          {dual && (
             <YAxis
+              yAxisId="right"
+              orientation="right"
               tick={AXIS_TICK}
               tickLine={false}
               axisLine={false}
               width={52}
-              domain={valueDomain}
+              domain={rightDomain}
               tickFormatter={compact}
             />
-            {dual && (
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={AXIS_TICK}
-                tickLine={false}
-                axisLine={false}
-                width={52}
-                domain={rightDomain}
-                tickFormatter={compact}
+          )}
+          {/* 선·영역은 크로스헤어 + 한 번에 전 시리즈를 읽는 툴팁 */}
+          <ChartTooltip
+            cursor={{ stroke: GRID, strokeWidth: 1 }}
+            content={<ChartTooltipContent indicator="line" className="min-w-44" />}
+          />
+          {multi && <ChartLegend content={<ChartLegendContent />} />}
+          {frame.series.map((entry, index) =>
+            chartType === "line" ? (
+              <Line
+                key={entry.key}
+                type="monotone"
+                dataKey={entry.key}
+                yAxisId={entry.axis === "right" ? "right" : undefined}
+                stroke={seriesColor(index, multi)}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                dot={false}
+                isAnimationActive={false}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
               />
-            )}
-            {/* 선·영역은 크로스헤어 + 한 번에 전 시리즈를 읽는 툴팁 */}
-            <ChartTooltip
-              cursor={{ stroke: GRID, strokeWidth: 1 }}
-              content={<ChartTooltipContent indicator="line" className="min-w-44" />}
-            />
-            {legend}
-            {frame.series.map((entry, index) =>
-              chartType === "line" ? (
-                <Line
-                  key={entry.key}
-                  type="monotone"
-                  dataKey={entry.key}
-                  yAxisId={entry.axis === "right" ? "right" : undefined}
-                  stroke={multi ? SLOTS[index] : SINGLE}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  dot={false}
-                  isAnimationActive={false}
-                  activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-                />
-              ) : (
-                <Area
-                  key={entry.key}
-                  type="monotone"
-                  dataKey={entry.key}
-                  stackId={multi ? "a" : undefined}
-                  isAnimationActive={false}
-                  stroke={multi ? SLOTS[index] : SINGLE}
-                  strokeWidth={2}
-                  fill={multi ? SLOTS[index] : SINGLE}
-                  fillOpacity={0.1}
-                  activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-                />
-              ),
-            )}
-            {spot}
-            {reference}
-          </Chart>
-        </ChartContainer>
-      </AxisFrame>
-    )
-  }
+            ) : (
+              <Area
+                key={entry.key}
+                type="monotone"
+                dataKey={entry.key}
+                stackId={multi ? "a" : undefined}
+                isAnimationActive={false}
+                stroke={seriesColor(index, multi)}
+                strokeWidth={2}
+                fill={seriesColor(index, multi)}
+                fillOpacity={0.1}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
+              />
+            ),
+          )}
+          {spot}
+          {referenceLines(frame, false)}
+        </Chart>
+      </ChartContainer>
+    </AxisFrame>
+  )
+}
+
+/** 직접 라벨이 붙을 자리를 담는 필드. 나머지 행은 빈 문자열이라 아무것도 안 그려진다. */
+const SPOT = "__spot"
+
+/** 값·라벨 글자는 시리즈 색이 아니라 텍스트 색을 입는다(CLAUDE.md). */
+const SPOT_LABEL = {
+  dataKey: SPOT,
+  fill: "var(--foreground)",
+  fontSize: 11,
+  fontWeight: 500,
+} as const
+
+/**
+ * 최대값 한 점에만 값을 적어 넣는다. 라벨을 render prop으로 그리는 대신 데이터에
+ * 얹으면 Recharts의 `LabelList`가 알아서 위치를 잡는다.
+ *
+ * **창으로 자르기 전에** 붙인다 — 그래야 창 안의 최대가 아니라 진짜 최대에 붙는다.
+ */
+function withSpotLabel(frame: ChartFrame) {
+  const key = frame.series[0]?.key
+  if (!key || frame.rows.length === 0) return frame.rows
+
+  const spot = frame.rows.reduce(
+    (best, row, index) => (Number(row[key]) > Number(frame.rows[best][key]) ? index : best),
+    0
+  )
+
+  return frame.rows.map((row, index) => ({
+    ...row,
+    [SPOT]:
+      index === spot
+        ? Number(row[key]).toLocaleString(undefined, { maximumFractionDigits: 1 })
+        : "",
+  }))
+}
+
+/** 막대 · 가로 막대 · 누적 막대. 마크 하나가 `<rect>` 하나라 창으로 잘라 그린다. */
+function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType }) {
+  const config = configFor(frame.series)
+  const multi = frame.series.length > 1
+  const horizontal = chartType === "hbar"
+  const stacked = chartType === "stacked"
+  const axis = useCategoryAxis(frame)
+
+  const plot = usePlotWindow(frame.rows.length, horizontal)
+  const labeled = useMemo(() => (multi ? frame.rows : withSpotLabel(frame)), [frame, multi])
+  const rows = useMemo(
+    () => labeled.slice(plot.start, plot.start + plot.size),
+    [labeled, plot.start, plot.size]
+  )
+  const domain = useMemo(() => valueDomain(frame, frame.series, stacked), [frame, stacked])
 
   return (
-    // 가로 막대는 축이 뒤집힌다 — 아래가 값, 왼쪽이 범주.
+    // 가로 막대는 축이 뒤집힌다 — 아래가 값, 왼쪽이 범주. 기준선 값은 그 선이 놓인
+    // 축의 이름에 붙으므로 이름도 함께 뒤집힌다.
     <AxisFrame
-      // 기준선 값은 그것이 선 축의 이름에 붙는다. 가로 막대는 축이 통째로 뒤집혀 있다.
-      xLabel={horizontal ? withReference(frame.yLabel, true) : categoryLabel}
-      yLabel={horizontal ? categoryLabel : withReference(frame.yLabel, true)}
+      xLabel={horizontal ? valueAxisName(frame) : axis.label}
+      yLabel={horizontal ? axis.label : valueAxisName(frame)}
       plot={plot}
     >
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">
@@ -643,7 +666,12 @@ function CartesianView({
           margin={{ top: horizontal ? 8 : 24, right: horizontal ? 56 : 16, bottom: 4, left: 4 }}
           barCategoryGap="20%"
         >
-          {grid}
+          <CartesianGrid
+            stroke={GRID}
+            strokeWidth={1}
+            vertical={horizontal}
+            horizontal={!horizontal}
+          />
           {horizontal ? (
             <>
               <XAxis
@@ -651,7 +679,7 @@ function CartesianView({
                 tick={AXIS_TICK}
                 tickLine={false}
                 axisLine={{ stroke: GRID }}
-                domain={valueDomain}
+                domain={domain}
                 tickFormatter={compact}
               />
               <YAxis
@@ -661,7 +689,7 @@ function CartesianView({
                 tickLine={false}
                 axisLine={false}
                 width={96}
-                tickFormatter={(value: string) => category(value, 12)}
+                tickFormatter={(value: string) => axis.format(value, 12)}
               />
             </>
           ) : (
@@ -672,7 +700,7 @@ function CartesianView({
                 tickLine={false}
                 axisLine={{ stroke: GRID }}
                 interval="preserveStartEnd"
-                tickFormatter={(value: string) => category(value, acrossMax)}
+                tickFormatter={(value: string) => axis.format(value, axis.max)}
               />
               <YAxis
                 type="number"
@@ -680,7 +708,7 @@ function CartesianView({
                 tickLine={false}
                 axisLine={false}
                 width={52}
-                domain={valueDomain}
+                domain={domain}
                 tickFormatter={compact}
               />
             </>
@@ -690,7 +718,7 @@ function CartesianView({
             cursor={{ fill: "var(--muted)", fillOpacity: 0.4 }}
             content={<ChartTooltipContent indicator="line" className="min-w-44" />}
           />
-          {legend}
+          {multi && <ChartLegend content={<ChartLegendContent />} />}
           {frame.series.map((entry, index) => {
             // 누적은 맨 위 조각만 끝을 둥글게 한다. 중간 조각까지 둥글면 울퉁불퉁해진다.
             const outermost = !stacked || index === frame.series.length - 1
@@ -700,7 +728,7 @@ function CartesianView({
                 dataKey={entry.key}
                 stackId={stacked ? "a" : undefined}
                 isAnimationActive={false}
-                fill={multi ? SLOTS[index] : SINGLE}
+                fill={seriesColor(index, multi)}
                 maxBarSize={24}
                 // 데이터 끝만 둥글게, 베이스라인 쪽은 각지게.
                 radius={outermost ? (horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]) : 0}
@@ -709,12 +737,14 @@ function CartesianView({
                 strokeWidth={stacked ? 2 : 0}
                 // 최대값 막대 끝에만 값을 적는다.
                 label={
-                  multi ? undefined : { ...SPOT_LABEL, position: horizontal ? "right" : "top", offset: 8 }
+                  multi
+                    ? undefined
+                    : { ...SPOT_LABEL, position: horizontal ? "right" : "top", offset: 8 }
                 }
               />
             )
           })}
-          {reference}
+          {referenceLines(frame, horizontal)}
         </BarChart>
       </ChartContainer>
     </AxisFrame>
@@ -726,13 +756,13 @@ function PieView({ frame }: { frame: ChartFrame }) {
   const valueKey = frame.series[0]?.key
   if (!valueKey) return null
 
+  const sliceColor = (row: Record<string, string | number>, index: number) =>
+    row.x === OTHER_LABEL ? OTHER_FILL : SLOTS[index]
+
   const config: ChartConfig = Object.fromEntries(
     frame.rows.map((row, index) => [
       String(row.x),
-      {
-        label: String(row.x),
-        color: row.x === OTHER_LABEL ? OTHER_FILL : SLOTS[index],
-      },
+      { label: String(row.x), color: sliceColor(row, index) },
     ]),
   )
 
@@ -764,10 +794,7 @@ function PieView({ frame }: { frame: ChartFrame }) {
           labelLine={{ stroke: GRID }}
         >
           {frame.rows.map((row, index) => (
-            <Cell
-              key={String(row.x)}
-              fill={row.x === OTHER_LABEL ? OTHER_FILL : SLOTS[index]}
-            />
+            <Cell key={String(row.x)} fill={sliceColor(row, index)} />
           ))}
         </Pie>
         <ChartLegend content={<ChartLegendContent nameKey="x" />} />
@@ -827,7 +854,7 @@ function ScatterView({ frame, connected }: { frame: ScatterFrame; connected?: bo
               key={entry.key}
               name={entry.label}
               data={entry.points}
-              fill={multi ? SLOTS[index] : SINGLE}
+              fill={seriesColor(index, multi)}
               // 겹치는 점은 카드 색 링으로 떼어 놓는다.
               stroke="var(--card)"
               strokeWidth={2}

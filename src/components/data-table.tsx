@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import type { ChartFrame, ScatterFrame } from "@/lib/aggregate"
+import type { ChartFrame, PlotData, ScatterFrame } from "@/lib/aggregate"
 import { cn } from "@/lib/utils"
 
 function formatValue(value: unknown): string {
@@ -30,14 +30,8 @@ const OVERSCAN = 6
  * 창마다 열 폭이 다시 잡히면 스크롤할 때 열이 흔들린다. `table-fixed`로 폭을 창과
  * 무관하게 고정하고, 값 열만 폭을 준 뒤 남는 자리를 범주 열이 갖는다.
  */
-export function DataTable({
-  frame,
-  scatter,
-}: {
-  frame: ChartFrame | null
-  scatter: ScatterFrame | null
-}) {
-  const table = scatter ? scatterToTable(scatter) : frame ? frameToTable(frame) : null
+export function DataTable({ plot }: { plot: PlotData }) {
+  const table = plot.kind === "scatter" ? scatterToTable(plot.frame) : frameToTable(plot.frame)
   const boxRef = useRef<HTMLDivElement>(null)
   const [height, setHeight] = useState(0)
   const [top, setTop] = useState(0)
@@ -49,8 +43,6 @@ export function DataTable({
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
-
-  if (!table) return null
 
   const count = table.count
   // 스크롤 위치는 헤더까지 포함해서 재므로 한 행만큼 뺀다.

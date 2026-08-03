@@ -3,15 +3,20 @@ import { useState } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AppHeader } from "@/components/app-header"
 import { SettingsSidebar } from "@/components/settings-sidebar"
-import { ChartCanvas, type CanvasState } from "@/components/chart-canvas"
-import type { ChartType } from "@/components/chart-type-picker"
-import type { Aggregation, Reference } from "@/lib/aggregate"
-import { createChart, duplicateChart, MAX_CHARTS, type ChartSpec } from "@/lib/chart-spec"
+import { ChartCanvas } from "@/components/chart-canvas"
+import type { CanvasState } from "@/lib/canvas-state"
+import {
+  createChart,
+  duplicateChart,
+  withColumns,
+  MAX_CHARTS,
+  type ChartSpec,
+} from "@/lib/chart-spec"
 import { addGapColumn } from "@/lib/derive-column"
 import { validateFile } from "@/lib/file-constraints"
 import { parseFile, type ParseOptions } from "@/lib/parse-file"
 import { inferColumns, type ColumnInfo, type ColumnType } from "@/lib/infer-types"
-import { fillMapping, pruneMapping, type MappingKey } from "@/lib/mapping-slots"
+import { fillMapping } from "@/lib/mapping-slots"
 
 function App() {
   const [state, setState] = useState<CanvasState>({ status: "empty" })
@@ -25,12 +30,6 @@ function App() {
 
   // 지운 카드가 선택돼 있었으면 첫 카드로 흘러내린다 — 지울 때 따로 손대지 않아도 된다.
   const active = charts.find((chart) => chart.id === activeId) ?? charts[0]
-
-  function updateActive(patch: (chart: ChartSpec) => ChartSpec) {
-    setCharts((previous) =>
-      previous.map((chart) => (chart.id === active.id ? patch(chart) : chart))
-    )
-  }
 
   async function handleFile(file: File, options: ParseOptions = {}) {
     const problem = validateFile(file)
@@ -85,6 +84,41 @@ function App() {
     }
   }
 
+  /** 시트·헤더 행을 바꾸면 같은 파일을 그 설정으로 다시 읽는다. */
+  function reopen(options: ParseOptions) {
+    if (source) handleFile(source, options)
+  }
+
+  function handleColumnType(name: string, type: ColumnType) {
+    const next = columns.map((column) =>
+      column.name === name ? { ...column, type } : column
+    )
+    setColumns(next)
+    // 타입이 바뀌면 그 컬럼이 더는 후보가 아닐 수 있다. 모든 카드를 정리한다 —
+    // 선택돼 있지 않은 카드도 그 컬럼을 쓰고 있을 수 있다.
+    setCharts((previous) => previous.map((chart) => withColumns(chart, next)))
+  }
+
+  function handleChartChange(next: ChartSpec) {
+    setCharts((previous) => previous.map((chart) => (chart.id === next.id ? next : chart)))
+  }
+
+  /** 시차 컬럼은 후보로 나타나기만 한다. 묻지도 않았는데 매핑을 바꾸지 않는다. */
+  function handleDeriveGap(name: string) {
+    if (state.status !== "ready") return
+    const derived = addGapColumn(state.data, name)
+    if (!derived) return
+    setState({ ...state, data: derived.data })
+    setColumns((previous) => [...previous, derived.column])
+  }
+
+  function handleAddChart() {
+    if (charts.length >= MAX_CHARTS) return
+    const added = duplicateChart(active)
+    setCharts((previous) => [...previous, added])
+    setActiveId(added.id)
+  }
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex min-h-dvh flex-col lg:h-dvh">
@@ -98,67 +132,15 @@ function App() {
             dataset={state.status === "ready" ? state.dataset : null}
             data={state.status === "ready" ? state.data : null}
             columns={columns}
-            onColumnTypeChange={(name: string, type: ColumnType) => {
-              const next = columns.map((column) =>
-                column.name === name ? { ...column, type } : column
-              )
-              setColumns(next)
-              // 타입이 바뀌면 그 컬럼이 더는 후보가 아닐 수 있다. 모든 카드를 정리한다 —
-              // 선택돼 있지 않은 카드도 그 컬럼을 쓰고 있을 수 있다.
-              setCharts((previous) =>
-                previous.map((chart) => ({
-                  ...chart,
-                  mapping: fillMapping(
-                    pruneMapping(chart.mapping, chart.chartType, next),
-                    chart.chartType,
-                    next
-                  ),
-                }))
-              )
-            }}
+            onColumnTypeChange={handleColumnType}
+            chart={active}
             chartNumber={charts.indexOf(active) + 1}
             chartCount={charts.length}
-            chartType={active.chartType}
-            onChartTypeChange={(next: ChartType) =>
-              updateActive((chart) => ({
-                ...chart,
-                chartType: next,
-                mapping: fillMapping(
-                  pruneMapping(chart.mapping, next, columns),
-                  next,
-                  columns
-                ),
-              }))
-            }
-            mapping={active.mapping}
-            onMappingChange={(key: MappingKey, column?: string) =>
-              updateActive((chart) => {
-                const mapping = { ...chart.mapping }
-                if (column) mapping[key] = column
-                else delete mapping[key]
-                return { ...chart, mapping }
-              })
-            }
-            aggregation={active.aggregation}
-            onAggregationChange={(next: Aggregation) =>
-              updateActive((chart) => ({ ...chart, aggregation: next }))
-            }
-            reference={active.reference}
-            onReferenceChange={(next: Reference) =>
-              updateActive((chart) => ({ ...chart, reference: next }))
-            }
-            onDeriveGap={(name: string) => {
-              if (state.status !== "ready") return
-              const derived = addGapColumn(state.data, name)
-              if (!derived) return
-              // 새 컬럼은 후보로 나타나기만 한다. 묻지도 않았는데 매핑을 바꾸지 않는다.
-              setState({ ...state, data: derived.data })
-              setColumns((previous) => [...previous, derived.column])
-            }}
-            onSheetChange={(sheet: string) => source && handleFile(source, { sheet })}
-            onHeaderRowChange={(headerRow: number) =>
-              source &&
-              handleFile(source, {
+            onChartChange={handleChartChange}
+            onDeriveGap={handleDeriveGap}
+            onSheetChange={(sheet) => reopen({ sheet })}
+            onHeaderRowChange={(headerRow) =>
+              reopen({
                 sheet: state.status === "ready" ? (state.data.sheet ?? undefined) : undefined,
                 headerRow,
               })
@@ -172,13 +154,8 @@ function App() {
               activeId={active.id}
               columns={columns}
               onSelectChart={setActiveId}
-              onAddChart={() => {
-                if (charts.length >= MAX_CHARTS) return
-                const added = duplicateChart(active)
-                setCharts((previous) => [...previous, added])
-                setActiveId(added.id)
-              }}
-              onRemoveChart={(id: string) =>
+              onAddChart={handleAddChart}
+              onRemoveChart={(id) =>
                 setCharts((previous) => previous.filter((chart) => chart.id !== id))
               }
               onFile={handleFile}

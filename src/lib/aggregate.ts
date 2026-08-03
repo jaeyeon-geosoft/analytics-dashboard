@@ -1,6 +1,8 @@
-import type { ChartType } from "@/components/chart-type-picker"
+import type { ChartType } from "@/lib/chart-types"
 import { toDateOrder, toNumber, type ColumnInfo } from "@/lib/infer-types"
 import {
+  allowsReference,
+  isPointChart,
   MAPPING_SLOTS,
   rightValueColumn,
   type Mapping,
@@ -86,7 +88,7 @@ export type ChartFrame = {
  * (재렌더마다 40초씩 다시 든다. 실제로 탭이 얼어붙었다). 플롯 폭이 1,500px을 넘는 일이
  * 없으니 그 두 배면 픽셀당 두 점 — 눈으로 구분할 수 있는 한계다.
  */
-const MAX_PLOT_POINTS = 3000
+const MAX_TIMELINE_POINTS = 3000
 
 /**
  * 화면에 그릴 만큼으로 줄인다.
@@ -99,9 +101,9 @@ function downsample(
   rows: Record<string, string | number>[],
   series: ChartSeries[]
 ): Record<string, string | number>[] {
-  if (rows.length <= MAX_PLOT_POINTS) return rows
+  if (rows.length <= MAX_TIMELINE_POINTS) return rows
 
-  const buckets = Math.floor(MAX_PLOT_POINTS / 2)
+  const buckets = Math.floor(MAX_TIMELINE_POINTS / 2)
   const span = rows.length / buckets
   // 양 끝은 무조건 남긴다 — 시계열의 시작과 끝이 잘리면 기간 자체가 달라 보인다.
   const keep = new Set<number>([0, rows.length - 1])
@@ -141,8 +143,12 @@ export type ScatterFrame = {
   omitted: number
 }
 
-/** 산점도는 점이 많아지면 렌더링도 판독도 무너진다. */
-const MAX_POINTS = 3000
+/**
+ * 산점도·궤적이 그릴 점의 상한. 넘는 행은 **버린다** — 위 `MAX_TIMELINE_POINTS`가
+ * 줄이되 남기는 것과 달리 여기는 잘라내는 것이라, 같은 3,000이어도 뜻이 다르다.
+ * 점 하나가 SVG 노드 하나라서 줄일 방법이 없다(줄이면 관계 자체가 달라진다).
+ */
+const MAX_SCATTER_POINTS = 3000
 
 /**
  * 매핑은 지금 종류에 없는 슬롯의 값도 들고 있다("같은 key면 유지"의 대가). 그대로 읽으면
@@ -171,7 +177,7 @@ function reduce(values: number[], aggregation: Aggregation, count: number): numb
  * 정렬은 축이 순서를 가졌느냐로 갈린다 — 날짜·숫자는 그 순서대로, 순서 없는 범주만
  * 값 큰 순으로. 순서를 뒤섞으면 추이가 거짓말이 된다.
  */
-export function buildChartFrame(
+function buildChartFrame(
   chartType: ChartType,
   rawMapping: Mapping,
   aggregation: Aggregation,
@@ -325,7 +331,7 @@ function compareX(a: string, b: string, xType?: string): number {
 }
 
 
-export function buildScatterFrame(
+function buildScatterFrame(
   rawMapping: Mapping,
   rows: Record<string, string>[]
 ): ScatterFrame | null {
@@ -340,7 +346,7 @@ export function buildScatterFrame(
     const x = toNumber(row[xColumn] ?? "")
     const y = toNumber(row[yColumn] ?? "")
     if (x === null || y === null) continue
-    if (kept >= MAX_POINTS) {
+    if (kept >= MAX_SCATTER_POINTS) {
       omitted += 1
       continue
     }
@@ -361,4 +367,45 @@ export function buildScatterFrame(
     yLabel: yColumn,
     omitted,
   }
+}
+
+/** 차트 한 장을 그리는 데 필요한 입력 전부. 이 묶음이 같으면 결과도 같다. */
+export type PlotRequest = {
+  chartType: ChartType
+  mapping: Mapping
+  aggregation: Aggregation
+  reference: Reference
+  columns: ColumnInfo[]
+  rows: Record<string, string>[]
+}
+
+/**
+ * 그릴 것. 어느 프레임이 들어 있는지가 `kind`로 드러난다.
+ *
+ * 예전에는 `frame`·`scatter`를 둘 다 nullable로 들고 다녔는데, 그러면 "차트 종류"와
+ * "실제로 찬 프레임"이 어긋난 상태가 타입상 가능하고 읽는 쪽마다 `isPointChart`를
+ * 다시 물어야 했다. 여기서 한 번 갈라 놓으면 그 물음이 사라진다.
+ */
+export type PlotData =
+  | { kind: "cartesian"; frame: ChartFrame }
+  | { kind: "scatter"; frame: ScatterFrame }
+
+/**
+ * 차트 종류를 보고 어느 프레임을 만들지 정하는 **유일한 자리**.
+ *
+ * 기준선을 못 다는 종류에서 고른 값이 남아 있어도 계산에 새어 들어가지 않게 여기서
+ * 막는다 — 매핑과 같은 이유로 값을 지우지는 않기 때문에(종류를 되돌리면 살아난다)
+ * 읽는 쪽에서 한 번 걸러야 한다.
+ */
+export function buildPlot(request: PlotRequest): PlotData | null {
+  const { chartType, mapping, aggregation, reference, columns, rows } = request
+
+  if (isPointChart(chartType)) {
+    const frame = buildScatterFrame(mapping, rows)
+    return frame && { kind: "scatter", frame }
+  }
+
+  const wanted = allowsReference(chartType) ? reference : "none"
+  const frame = buildChartFrame(chartType, mapping, aggregation, columns, rows, wanted)
+  return frame && { kind: "cartesian", frame }
 }

@@ -1,4 +1,4 @@
-import type { ChartType } from "@/components/chart-type-picker"
+import type { ChartType } from "@/lib/chart-types"
 import type { ColumnInfo, ColumnType } from "@/lib/infer-types"
 
 /**

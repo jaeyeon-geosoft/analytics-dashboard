@@ -1,14 +1,5 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-
-export type ChartType =
-  | "bar"
-  | "hbar"
-  | "stacked"
-  | "line"
-  | "area"
-  | "scatter"
-  | "path"
-  | "pie"
+import type { ChartType } from "@/lib/chart-types"
 
 /**
  * 글리프는 lucide 아이콘이 아니라 이 도구가 실제로 그리는 마크를 축소한 것이다.
