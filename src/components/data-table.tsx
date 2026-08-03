@@ -59,17 +59,22 @@ export function DataTable({ plot }: { plot: PlotData }) {
       className="absolute inset-0 overflow-auto"
     >
       <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
+        {/*
+          key는 헤더 문자열이 아니라 **자리 번호**다. 이름은 겹칠 수 있다 —
+          이중 축에서 Y축(좌)와 Y축(우)에 같은 컬럼을 고르면 두 열의 이름이
+          똑같아진다. 열은 순서가 곧 정체성이라 번호가 맞는 key다.
+        */}
         <colgroup>
           <col />
-          {table.headers.slice(1).map((header) => (
-            <col key={header} className="w-40" />
+          {table.headers.slice(1).map((_, index) => (
+            <col key={index} className="w-40" />
           ))}
         </colgroup>
         <thead className="sticky top-0 bg-card">
           <tr>
             {table.headers.map((header, index) => (
               <th
-                key={header}
+                key={index}
                 scope="col"
                 className={cn(
                   "h-7 border-b border-border px-3 font-medium text-muted-foreground",
