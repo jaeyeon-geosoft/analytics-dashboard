@@ -138,7 +138,13 @@ export function isTimeline(chartType: ChartType): boolean {
  * 켜진 선 차트는 어느 축의 선인지 말할 수 없어 계산 쪽에서 다시 걸러낸다.
  */
 export function allowsReference(chartType: ChartType): boolean {
-  return chartType === "histogram" || chartType === "line" || chartType === "area"
+  return (
+    chartType === "histogram" ||
+    chartType === "line" ||
+    chartType === "area" ||
+    chartType === "bar" ||
+    chartType === "hbar"
+  )
 }
 
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
@@ -152,9 +158,17 @@ export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   area: [ORDERED_X, NUMERIC_Y, SERIES],
   scatter: POINT_SLOTS,
   path: POINT_SLOTS,
-  // 컬럼 하나가 전부다. 나눌 기준(분할)을 주지 않는 것은, 분포를 겹쳐 그리면 서로를
-  // 가려서 어느 쪽 봉우리인지 못 읽기 때문이다 — 그때는 카드를 나란히 놓는다.
-  histogram: [{ ...VALUE, hint: "구간으로 나눌 숫자" }],
+  /*
+    칸이 하나뿐인 것은 **두 축이 모두 이 컬럼 하나에서 나오기** 때문이다 — 가로는 이
+    값을 구간으로 자른 것이고, 세로는 각 구간에 들어간 행 수다. 그래서 슬롯 이름을
+    `값`이 아니라 `X축`으로 둔다. `값`이라고 하면 "그럼 Y축에 넣을 컬럼은?"이 된다.
+
+    나눌 기준(분할)을 주지 않는 것은, 분포를 겹쳐 그리면 서로를 가려서 어느 쪽 봉우리인지
+    못 읽기 때문이다 — 그때는 카드를 나란히 놓는다.
+  */
+  histogram: [
+    { ...VALUE, label: "X축", hint: "구간으로 나눌 숫자. 세로축은 구간마다 센 개수" },
+  ],
   pie: [CATEGORY, VALUE],
 }
 

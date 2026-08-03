@@ -493,11 +493,16 @@ function CartesianView({
     분포에서는 기준선이 든 구간이 곧 최빈 구간인 경우가 흔해서 거의 항상 겹친다. 대신 그
     값이 놓인 **축의 이름**에 적는다. 집계 방식을 적는 자리와 같다.
   */
-  const referenceAt = frame.reference && {
-    ...(chartType === "histogram"
+  // 기준선은 언제나 **값 축** 위에 선다. 분포만 값이 가로축이고(세로는 개수), 가로 막대는
+  // 축이 뒤집혀 값이 가로다.
+  // 세 갈래의 합집합을 그대로 두면 Recharts의 제네릭이 한쪽으로 좁혀져 안 맞는다.
+  const referenceAt: { x?: string | number; y?: number } | undefined =
+    frame.reference &&
+    (chartType === "histogram"
       ? { x: frame.reference.atCategory }
-      : { y: frame.reference.value }),
-  }
+      : horizontal
+        ? { x: frame.reference.value }
+        : { y: frame.reference.value })
   const reference = referenceAt && [
     // 카드 색을 먼저 깔아 마크에서 떼어 놓는다 — 겹치는 점의 링, 누적 조각 사이의 틈과
     // 같은 방식이다. 이게 없으면 채도 높은 막대 위에서 파선이 묻힌다.
@@ -634,11 +639,16 @@ function CartesianView({
   return (
     // 가로 막대는 축이 뒤집힌다 — 아래가 값, 왼쪽이 범주.
     <AxisFrame
-      // 분포는 값 축이 가로다 — 기준선도 거기 서므로 이름도 그쪽에 붙는다.
+      // 기준선 값은 그것이 선 축의 이름에 붙는다. 분포는 값이 가로축이고, 가로 막대는
+      // 축이 통째로 뒤집혀 있다.
       xLabel={
-        horizontal ? frame.yLabel : withReference(categoryLabel, chartType === "histogram")
+        horizontal
+          ? withReference(frame.yLabel, true)
+          : withReference(categoryLabel, chartType === "histogram")
       }
-      yLabel={horizontal ? categoryLabel : frame.yLabel}
+      yLabel={
+        horizontal ? categoryLabel : withReference(frame.yLabel, chartType !== "histogram")
+      }
       plot={plot}
     >
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">

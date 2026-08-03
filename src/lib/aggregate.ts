@@ -257,8 +257,15 @@ export function buildChartFrame(
     return { row, total }
   })
 
-  if (orderedByX) {
-    const xType = columns.find((column) => column.name === xColumn)?.type
+  /*
+    정렬은 축이 **순서를 가진 것이냐**로 갈린다.
+
+    날짜·숫자는 그 자체로 순서가 있다. 값 큰 순으로 세우면 10월 16일이 10월 3일보다
+    앞에 오는 식이 되어 축이 거짓말을 한다(실제로 시계열 막대가 시간 역순으로 나왔다).
+    순서가 없는 범주(제품명·지역)만 값 큰 순으로 세운다 — 그때는 순위가 곧 차트의 일이다.
+  */
+  const xType = columns.find((column) => column.name === xColumn)?.type
+  if (orderedByX || xType === "date" || xType === "number") {
     entries.sort((a, b) => compareX(String(a.row.x), String(b.row.x), xType))
   } else {
     entries.sort((a, b) => b.total - a.total)
