@@ -486,23 +486,14 @@ function CartesianView({
     맞다. 색은 시리즈 슬롯을 쓰지 않는다: 기준선은 엔티티가 아니라 주석이고, 빨강을 쓰면
     "나쁨"이라는 없는 의미가 붙는다. 라벨 글자도 텍스트 색이다(CLAUDE.md).
 
-    히스토그램만 x축이 범주축(구간 라벨)이라 값이 든 구간에 스냅된다. 정확한 수는 축 이름이
-    들고 있다. 나머지는 y축이 수치축이라 그대로 그 자리에 선다.
-
-    선 위에 라벨을 붙이지 않는 것은, 최대값 직접 라벨과 같은 자리를 다투기 때문이다 —
-    분포에서는 기준선이 든 구간이 곧 최빈 구간인 경우가 흔해서 거의 항상 겹친다. 대신 그
-    값이 놓인 **축의 이름**에 적는다. 집계 방식을 적는 자리와 같다.
+    선 위에 라벨을 붙이지 않는 것은, 최대값 직접 라벨과 같은 자리를 다투기 때문이다.
+    대신 그 값이 놓인 **축의 이름**에 적는다 — 집계 방식을 적는 자리와 같다.
   */
-  // 기준선은 언제나 **값 축** 위에 선다. 분포만 값이 가로축이고(세로는 개수), 가로 막대는
-  // 축이 뒤집혀 값이 가로다.
-  // 세 갈래의 합집합을 그대로 두면 Recharts의 제네릭이 한쪽으로 좁혀져 안 맞는다.
-  const referenceAt: { x?: string | number; y?: number } | undefined =
+  // 기준선은 언제나 **값 축** 위에 선다. 가로 막대는 축이 뒤집혀 값이 가로다.
+  // 두 갈래의 합집합을 그대로 두면 Recharts의 제네릭이 한쪽으로 좁혀져 안 맞는다.
+  const referenceAt: { x?: number; y?: number } | undefined =
     frame.reference &&
-    (chartType === "histogram"
-      ? { x: frame.reference.atCategory }
-      : horizontal
-        ? { x: frame.reference.value }
-        : { y: frame.reference.value })
+    (horizontal ? { x: frame.reference.value } : { y: frame.reference.value })
   const reference = referenceAt && [
     // 카드 색을 먼저 깔아 마크에서 떼어 놓는다 — 겹치는 점의 링, 누적 조각 사이의 틈과
     // 같은 방식이다. 이게 없으면 채도 높은 막대 위에서 파선이 묻힌다.
@@ -639,16 +630,9 @@ function CartesianView({
   return (
     // 가로 막대는 축이 뒤집힌다 — 아래가 값, 왼쪽이 범주.
     <AxisFrame
-      // 기준선 값은 그것이 선 축의 이름에 붙는다. 분포는 값이 가로축이고, 가로 막대는
-      // 축이 통째로 뒤집혀 있다.
-      xLabel={
-        horizontal
-          ? withReference(frame.yLabel, true)
-          : withReference(categoryLabel, chartType === "histogram")
-      }
-      yLabel={
-        horizontal ? categoryLabel : withReference(frame.yLabel, chartType !== "histogram")
-      }
+      // 기준선 값은 그것이 선 축의 이름에 붙는다. 가로 막대는 축이 통째로 뒤집혀 있다.
+      xLabel={horizontal ? withReference(frame.yLabel, true) : categoryLabel}
+      yLabel={horizontal ? categoryLabel : withReference(frame.yLabel, true)}
       plot={plot}
     >
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">

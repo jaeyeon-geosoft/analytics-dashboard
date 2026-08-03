@@ -80,7 +80,8 @@ function Hint({ children }: { children: React.ReactNode }) {
 }
 
 /** 슬롯 설명을 한 곳에 모은 표. 아이콘을 컨트롤마다 두면 그게 더 어수선하다. */
-function MappingGuide({ chartType }: { chartType: ChartType }) {
+function
+MappingGuide({ chartType }: { chartType: ChartType }) {
   const rows = MAPPING_SLOTS[chartType].map((slot) => [slot.label, slot.hint] as const)
   if (usesAggregation(chartType)) {
     rows.push(["집계", "같은 범주가 여러 줄일 때 합칠 방법"])
@@ -432,7 +433,7 @@ export function SettingsSidebar({
                   onValueChange={(column) => onMappingChange(slot.key, column)}
                 />
               ))}
-              {/* 산점도·궤적은 행이 곧 점이고, 히스토그램은 언제나 개수라 고를 게 없다. */}
+              {/* 산점도·궤적은 행 하나가 점 하나라 묶을 일이 없다. */}
               {usesAggregation(chartType) && (
                 <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-2">
                   <Label htmlFor="aggregation" className="text-xs text-muted-foreground">

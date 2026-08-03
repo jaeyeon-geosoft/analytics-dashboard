@@ -14,7 +14,6 @@ import type { Dataset } from "@/components/settings-sidebar"
 import {
   AGGREGATION_LABELS,
   buildChartFrame,
-  buildHistogramFrame,
   buildScatterFrame,
   type ChartFrame,
   type ScatterFrame,
@@ -319,9 +318,7 @@ function ChartCard({
         request,
         frame: isPointChart(chartType)
           ? null
-          : chartType === "histogram"
-            ? buildHistogramFrame(mapping, rows, wanted)
-            : buildChartFrame(chartType, mapping, aggregation, columns, rows, wanted),
+          : buildChartFrame(chartType, mapping, aggregation, columns, rows, wanted),
         scatter: isPointChart(chartType) ? buildScatterFrame(mapping, rows) : null,
       })
     }
