@@ -18,6 +18,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     root,
+    // 앱마다 따로. 기본값이면 둘 다 루트의 node_modules/.vite를 쓰는데
+    // 설정이 서로 달라서 한쪽을 띄울 때마다 다른 쪽 캐시를 지우고 다시 만든다.
+    // 그러면 켜둔 탭이 든 `?v=` 해시가 사라져 **동적 import가 404로 죽는다**
+    // — 실제로 SheetJS(엑셀 열기)가 "Failed to fetch dynamically imported module"로 터졌다.
+    cacheDir: path.resolve(import.meta.dirname, 'node_modules/.vite', viewer ? 'viewer' : 'admin'),
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
