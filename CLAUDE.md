@@ -46,7 +46,9 @@ src/
 
 - **`shared/`는 `admin/`·`viewer/` 어느 쪽도 import하지 않는다.** 방향이 거꾸로다. eslint가 막는다.
 - **`admin/`과 `viewer/`는 서로 import하지 않는다.** 양쪽이 필요하면 `shared/`로 올린다.
-- 빌드 진입점 2개(`index.html` / `view.html`) → `dist-admin/` · `dist-viewer/`. 서로 다른 도메인에 따로 배포할 수 있고, 뷰어 번들에는 파서·사이드바가 들어가지 않는다.
+- 빌드 진입점 2개(`index.html` → `src/admin/main.tsx`, `view.html` → `src/viewer/main.tsx`). 뷰어는 `vite build --mode viewer`로 따로 빌드해 `dist-viewer/`에 나온다 — 서로 다른 도메인에 따로 배포할 수 있고, 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(확인함: 830KB+493KB → 190KB).
+- **뷰어 산출물은 `dist-viewer/view.html`이다**(`index.html`이 아니다). 도메인 루트에 붙이려면 호스팅에서 rewrite 한 줄이 필요하다. 어차피 차트 id를 경로로 받게 되면 rewrite가 필요해서 그대로 뒀다.
+- CSS는 진입점별로 갈리지 않는다 — Tailwind가 `src/` 전체를 스캔해서 양쪽 CSS가 같다(59KB, gzip 11KB). 지금 크기에선 나눌 값이 없다.
 - `apps/*` + `packages/*` + workspace로 가는 것은 **뷰어 전용 의존성이 생기거나, 세 번째 앱이 생기거나, 빌드 시간이 아파질 때.** 그때 `src/shared/`를 통째로 옮기면 되므로 미리 하지 않는다.
 
 ## 기술 스택
@@ -70,10 +72,12 @@ src/
 ## 명령어
 
 ```bash
-npm run dev       # 개발 서버
-npm run build     # tsc -b && vite build (타입 에러가 빌드를 막는다)
-npm run lint      # eslint
-npm run preview   # 빌드 결과 미리보기
+npm run dev             # 개발 서버 하나로 둘 다 연다 — `/`가 어드민, `/view.html`이 뷰어
+npm run build           # tsc -b + 어드민·뷰어 둘 다 빌드 (타입 에러가 빌드를 막는다)
+npm run build:admin     # 어드민만 → dist-admin/   (타입 검사 없음)
+npm run build:viewer    # 뷰어만  → dist-viewer/   (타입 검사 없음)
+npm run lint            # eslint
+npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 ```
 
 테스트 러너는 아직 없다. 검증은 `npm run build`(타입) + `npm run lint`로 한다.

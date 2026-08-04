@@ -92,7 +92,8 @@ CSV/TSV와 Excel(`.xlsx`/`.xls`) 모두 열리고, 여러 시트와 헤더가 1�
 `lib/aggregate.ts`가 `components/`를 import하게 된다 — 방향이 거꾸로다.
 
 **`src/`는 `shared/` · `admin/` · `viewer/` 셋으로 갈려 있다**(규칙은 [CLAUDE.md](CLAUDE.md#레포-구조),
-eslint가 강제). `viewer/`는 아직 비어 있다. 지금 화면은 전부 어드민이다.
+eslint가 강제). 빌드 진입점도 둘이고 산출물이 `dist-admin/` · `dist-viewer/`로 갈린다.
+**뷰어는 아직 껍데기다** — 마운트만 되고 API에 연결되어 있지 않다. 지금 동작하는 화면은 전부 어드민이다.
 
 | 파일 | 역할 |
 |---|---|
@@ -117,6 +118,7 @@ eslint가 강제). `viewer/`는 아직 비어 있다. 지금 화면은 전부 �
 | `src/admin/lib/derive-column.ts` | 직전 행과의 시차(초) 컬럼 만들기. **파생 값은 여기 하나뿐** |
 | `src/shared/components/chart-view.tsx` | Recharts 렌더러 — `TimelineView`(선·영역) / `BarView`(막대 3종) / `PieView` / `ScatterView` |
 | `src/shared/components/data-table.tsx` | 차트와 같은 집계 결과의 표 보기 (보이는 행만 그린다) |
+| `src/viewer/viewer-app.tsx` | **껍데기.** API에서 스펙·데이터를 받아 `chart-card`로 그릴 자리 |
 
 ## 파싱
 
