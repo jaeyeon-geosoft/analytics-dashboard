@@ -165,18 +165,26 @@ export function ChartCard({
   order,
   data,
   columns,
+  title,
   selected,
   onSelect,
   onRemove,
 }: {
   spec: ChartSpec
-  number: number
+  /** 사이드바의 같은 배지와 짝이 되는 번호. 어드민에서만 쓴다. */
+  number?: number
   /** 그리드에서의 순번. 카드끼리 계산이 같은 프레임에 겹치지 않게 미루는 데 쓴다. */
   order: number
   data: DataFrame
   columns: ColumnInfo[]
-  selected: boolean
-  onSelect: () => void
+  /** 저장된 제목. 없으면 매핑에서 만든다 — 어드민에는 아직 제목 입력란이 없다. */
+  title?: string
+  /**
+   * 편집 어포던스는 전부 선택이다. 뷰어는 고르지도 지우지도 않으므로 넘기지 않고,
+   * 그러면 배지·클릭·삭제가 통째로 빠진다. 계산 지연·표 토글·경고는 양쪽 공통이라 남는다.
+   */
+  selected?: boolean
+  onSelect?: () => void
   onRemove?: () => void
 }) {
   const { chartType, mapping, aggregation, reference } = spec
@@ -192,6 +200,8 @@ export function ChartCard({
   const busy = toggle.swapping || (pending && slow)
   const caveats = plot ? caveatsFor(plot, chartType) : []
   const { axes, aside } = describeMapping(spec)
+  // 저장된 제목이 우선. 어드민은 아직 제목이 없어서 매핑 요약으로 떨어진다.
+  const heading = title ?? axes
 
   const missing = MAPPING_SLOTS[chartType]
     .filter((slot) => !slot.optional && !mapping[slot.key])
@@ -203,7 +213,11 @@ export function ChartCard({
       onClick={onSelect}
       className={cn(
         "flex min-h-0 flex-col rounded-2xl border bg-card transition-colors",
-        selected ? "border-foreground/30" : "border-border hover:border-foreground/15"
+        !onSelect
+          ? "border-border"
+          : selected
+            ? "border-foreground/30"
+            : "border-border hover:border-foreground/15"
       )}
     >
       <header className="flex shrink-0 items-start gap-2.5 border-b border-border px-4 py-3">
@@ -211,6 +225,7 @@ export function ChartCard({
           번호는 장식이 아니다. 사이드바의 같은 배지와 짝이 되어 "지금 어느 카드를
           편집 중인지"를 두 패널에 걸쳐 잇는다.
         */}
+        {onSelect && (
         <button
           type="button"
           onClick={onSelect}
@@ -223,10 +238,11 @@ export function ChartCard({
         >
           {number}
         </button>
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm">
-            {axes ? (
-              <span className="font-mono">{axes}</span>
+            {heading ? (
+              <span className="font-mono">{heading}</span>
             ) : (
               <span className="text-muted-foreground">컬럼 선택 전</span>
             )}
