@@ -1,4 +1,9 @@
 @import 'tailwindcss';
+
+/* Tailwind는 Vite의 `root`(= src/admin 또는 src/viewer)만 자동으로 스캔한다.
+   shared/는 그 바깥이라 여기서 직접 짚어줘야 한다 — 빼면 shared에만 있는
+   클래스가 빌드 CSS에서 통째로 빠진다(실제로 h-7·border-separate가 빠져 표가 깨졌다). */
+@source "../shared";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";

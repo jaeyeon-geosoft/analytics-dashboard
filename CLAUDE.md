@@ -46,9 +46,10 @@ src/
 
 - **`shared/`는 `admin/`·`viewer/` 어느 쪽도 import하지 않는다.** 방향이 거꾸로다. eslint가 막는다.
 - **`admin/`과 `viewer/`는 서로 import하지 않는다.** 양쪽이 필요하면 `shared/`로 올린다.
-- 빌드 진입점 2개(`index.html` → `src/admin/main.tsx`, `view.html` → `src/viewer/main.tsx`). 뷰어는 `vite build --mode viewer`로 따로 빌드해 `dist-viewer/`에 나온다 — 서로 다른 도메인에 따로 배포할 수 있고, 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(확인함: 830KB+493KB → 190KB).
-- **뷰어 산출물은 `dist-viewer/view.html`이다**(`index.html`이 아니다). 도메인 루트에 붙이려면 호스팅에서 rewrite 한 줄이 필요하다. 어차피 차트 id를 경로로 받게 되면 rewrite가 필요해서 그대로 뒀다.
-- CSS는 진입점별로 갈리지 않는다 — Tailwind가 `src/` 전체를 스캔해서 양쪽 CSS가 같다(59KB, gzip 11KB). 지금 크기에선 나눌 값이 없다.
+- **Vite `root`가 앱 폴더다**(`src/admin` / `src/viewer`). 진입 HTML은 자기 앱 폴더 안에 `index.html`로 있고 `./main.tsx`를 가리킨다. dev 서버가 **그 앱 하나만** 연다 — 어드민 서버에서 뷰어는 안 보인다. 포트는 5173(어드민) / 5174(뷰어)로 못 박혀 있다(`strictPort`).
+- 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(확인함: 830KB+493KB → 190KB).
+- **`src/shared/index.css`의 `@source "../shared"`를 지우지 말 것.** Tailwind는 Vite의 `root`만 자동 스캔하는데 `shared/`가 그 바깥이라, 빼면 shared에만 있는 클래스가 빌드 CSS에서 통째로 빠진다 — 실제로 `h-7`·`border-separate`가 빠져 표가 깨졌다. 앱 폴더를 더 만들면 여기도 같이 볼 것.
+- CSS도 앱별로 갈린다(어드민 59KB / 뷰어 53KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다.
 - `apps/*` + `packages/*` + workspace로 가는 것은 **뷰어 전용 의존성이 생기거나, 세 번째 앱이 생기거나, 빌드 시간이 아파질 때.** 그때 `src/shared/`를 통째로 옮기면 되므로 미리 하지 않는다.
 
 ## 기술 스택
@@ -72,13 +73,17 @@ src/
 ## 명령어
 
 ```bash
-npm run dev             # 개발 서버 하나로 둘 다 연다 — `/`가 어드민, `/view.html`이 뷰어
+npm run dev             # 어드민 dev 서버 :5173  (뷰어는 안 열린다)
+npm run dev:viewer      # 뷰어  dev 서버 :5174
 npm run build           # tsc -b + 어드민·뷰어 둘 다 빌드 (타입 에러가 빌드를 막는다)
 npm run build:admin     # 어드민만 → dist-admin/   (타입 검사 없음)
 npm run build:viewer    # 뷰어만  → dist-viewer/   (타입 검사 없음)
 npm run lint            # eslint
 npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 ```
+
+**앱은 한 번에 하나만 띄우는 게 기본이다.** 어드민 작업 중이면 어드민만.
+"저장 → 뷰어에서 확인"처럼 왕복할 때만 터미널 2개에 둘 다 띄운다.
 
 테스트 러너는 아직 없다. 검증은 `npm run build`(타입) + `npm run lint`로 한다.
 

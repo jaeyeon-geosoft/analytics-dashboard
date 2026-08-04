@@ -92,7 +92,9 @@ CSV/TSV와 Excel(`.xlsx`/`.xls`) 모두 열리고, 여러 시트와 헤더가 1�
 `lib/aggregate.ts`가 `components/`를 import하게 된다 — 방향이 거꾸로다.
 
 **`src/`는 `shared/` · `admin/` · `viewer/` 셋으로 갈려 있다**(규칙은 [CLAUDE.md](CLAUDE.md#레포-구조),
-eslint가 강제). 빌드 진입점도 둘이고 산출물이 `dist-admin/` · `dist-viewer/`로 갈린다.
+eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `root`가 앱 폴더라
+`npm run dev`(:5173)는 어드민만, `npm run dev:viewer`(:5174)는 뷰어만 연다.
+산출물은 `dist-admin/index.html` · `dist-viewer/index.html`.
 **뷰어는 아직 껍데기다** — 마운트만 되고 API에 연결되어 있지 않다. 지금 동작하는 화면은 전부 어드민이다.
 
 | 파일 | 역할 |
