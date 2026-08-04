@@ -13,6 +13,7 @@ import {
   type ChartSpec,
 } from "@/shared/lib/chart-spec"
 import { addGapColumn } from "@/admin/lib/derive-column"
+import { buildDashboard, downloadDashboard } from "@/admin/lib/export-dashboard"
 import { validateFile } from "@/admin/lib/file-constraints"
 import { parseFile, type ParseOptions } from "@/admin/lib/parse-file"
 import { inferColumns, type ColumnInfo, type ColumnType } from "@/shared/lib/infer-types"
@@ -112,6 +113,12 @@ function App() {
     setColumns((previous) => [...previous, derived.column])
   }
 
+  /** API가 붙기 전까지의 임시 통로. 나중에 이 자리가 POST /api/charts가 된다. */
+  function handleExport() {
+    if (state.status !== "ready") return
+    downloadDashboard(buildDashboard(state.dataset, state.data, columns, charts))
+  }
+
   function handleAddChart() {
     if (charts.length >= MAX_CHARTS) return
     const added = duplicateChart(active)
@@ -155,6 +162,7 @@ function App() {
               columns={columns}
               onSelectChart={setActiveId}
               onAddChart={handleAddChart}
+              onExport={handleExport}
               onRemoveChart={(id) =>
                 setCharts((previous) => previous.filter((chart) => chart.id !== id))
               }

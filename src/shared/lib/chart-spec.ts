@@ -1,7 +1,14 @@
 import type { ChartType } from "@/shared/lib/chart-types"
 import type { Aggregation, Reference } from "@/shared/lib/aggregate"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
-import { fillMapping, pruneMapping, type Mapping, type MappingKey } from "@/shared/lib/mapping-slots"
+import {
+  fillMapping,
+  MAPPING_SLOTS,
+  pruneMapping,
+  rightValueColumn,
+  type Mapping,
+  type MappingKey,
+} from "@/shared/lib/mapping-slots"
 
 /**
  * 한 화면에 올릴 수 있는 차트 수.
@@ -78,4 +85,28 @@ export function withMapping(spec: ChartSpec, key: MappingKey, column?: string): 
   if (column) mapping[key] = column
   else delete mapping[key]
   return { ...spec, mapping }
+}
+
+/**
+ * 카드가 무엇을 그리고 있는지 한 줄로. 네 장이 나란히 서면 종류만으로는 구분이 안 된다.
+ * 분할과 오른쪽 축은 X→Y의 흐름이 아니므로 화살표에 끼우지 않고 뒤에 덧붙인다.
+ *
+ * 내보낼 때 차트 제목으로도 쓴다 — 카드 머리와 뷰어가 같은 문장을 쓰게 하려고 export한다.
+ */
+export function describeMapping(spec: ChartSpec): { axes: string; aside?: string } {
+  const slots = MAPPING_SLOTS[spec.chartType]
+  const axes = slots
+    .filter((slot) => slot.key !== "series" && slot.key !== "y2")
+    .map((slot) => spec.mapping[slot.key])
+    .filter(Boolean)
+    .join(" → ")
+
+  const right = rightValueColumn(spec.chartType, spec.mapping, spec.aggregation === "count")
+  const hasSeries = slots.some((slot) => slot.key === "series")
+  const aside = [
+    right && `${right}(우)`,
+    hasSeries ? spec.mapping.series : undefined,
+  ].filter(Boolean)
+
+  return { axes, aside: aside.length > 0 ? aside.join(" · ") : undefined }
 }

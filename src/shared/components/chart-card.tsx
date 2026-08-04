@@ -12,14 +12,13 @@ import {
   type PlotData,
   type PlotRequest,
 } from "@/shared/lib/aggregate"
-import type { ChartSpec } from "@/shared/lib/chart-spec"
+import { describeMapping, type ChartSpec } from "@/shared/lib/chart-spec"
 import type { ChartType } from "@/shared/lib/chart-types"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
 import {
   isPointChart,
   isTimeline,
   MAPPING_SLOTS,
-  rightValueColumn,
   usesAggregation,
 } from "@/shared/lib/mapping-slots"
 import type { DataFrame } from "@/shared/lib/dataset"
@@ -160,28 +159,6 @@ function caveatsFor(plot: PlotData, chartType: ChartType): string[] {
   return notes
 }
 
-/**
- * 카드가 무엇을 그리고 있는지 한 줄로. 네 장이 나란히 서면 종류만으로는 구분이 안 된다.
- * 분할과 오른쪽 축은 X→Y의 흐름이 아니므로 화살표에 끼우지 않고 뒤에 덧붙인다.
- */
-function describe(spec: ChartSpec): { axes: string; aside?: string } {
-  const slots = MAPPING_SLOTS[spec.chartType]
-  const axes = slots
-    .filter((slot) => slot.key !== "series" && slot.key !== "y2")
-    .map((slot) => spec.mapping[slot.key])
-    .filter(Boolean)
-    .join(" → ")
-
-  const right = rightValueColumn(spec.chartType, spec.mapping, spec.aggregation === "count")
-  const hasSeries = slots.some((slot) => slot.key === "series")
-  const aside = [
-    right && `${right}(우)`,
-    hasSeries ? spec.mapping.series : undefined,
-  ].filter(Boolean)
-
-  return { axes, aside: aside.length > 0 ? aside.join(" · ") : undefined }
-}
-
 export function ChartCard({
   spec,
   number,
@@ -214,7 +191,7 @@ export function ChartCard({
 
   const busy = toggle.swapping || (pending && slow)
   const caveats = plot ? caveatsFor(plot, chartType) : []
-  const { axes, aside } = describe(spec)
+  const { axes, aside } = describeMapping(spec)
 
   const missing = MAPPING_SLOTS[chartType]
     .filter((slot) => !slot.optional && !mapping[slot.key])

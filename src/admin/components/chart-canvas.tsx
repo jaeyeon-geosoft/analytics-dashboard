@@ -1,4 +1,4 @@
-import { AlertTriangle, Plus } from "lucide-react"
+import { AlertTriangle, Download, Plus } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/shared/components/ui/alert"
 import { Button } from "@/shared/components/ui/button"
@@ -30,6 +30,7 @@ export function ChartCanvas({
   onSelectChart,
   onAddChart,
   onRemoveChart,
+  onExport,
   onFile,
 }: {
   state: CanvasState
@@ -38,6 +39,7 @@ export function ChartCanvas({
   columns: ColumnInfo[]
   onSelectChart: (id: string) => void
   onAddChart: () => void
+  onExport: () => void
   onRemoveChart: (id: string) => void
   onFile: (file: File) => void
 }) {
@@ -100,6 +102,7 @@ export function ChartCanvas({
         data={state.data}
         count={charts.length}
         onAddChart={onAddChart}
+        onExport={onExport}
       />
       {/*
         `minmax(26rem, 1fr)`: 남는 높이는 행끼리 나눠 갖고(카드 2장이면 그만큼 커진다),
@@ -140,11 +143,13 @@ function DatasetBar({
   data,
   count,
   onAddChart,
+  onExport,
 }: {
   dataset: Dataset
   data: ParsedFile
   count: number
   onAddChart: () => void
+  onExport: () => void
 }) {
   const caveats = [
     data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
@@ -180,6 +185,12 @@ function DatasetBar({
         <Button variant="outline" size="sm" onClick={onAddChart} disabled={full}>
           <Plus />
           차트 추가
+        </Button>
+        {/* API가 붙기 전까지의 임시 통로. 지금 캔버스에 있는 것을 뷰어가 읽는 JSON으로
+            떨군다 — 나중에 이 버튼이 "저장"(POST)이 된다. */}
+        <Button variant="outline" size="sm" onClick={onExport}>
+          <Download />
+          내보내기
         </Button>
       </div>
     </div>

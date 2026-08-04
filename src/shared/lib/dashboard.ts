@@ -50,6 +50,16 @@ export type DashboardChart = {
  */
 export const DASHBOARD_FORMAT = 1
 
+/**
+ * 그리드 규격. `layout`이 칸 단위라 **어드민과 뷰어가 같은 숫자를 봐야 한다** —
+ * 한쪽만 바꾸면 같은 대시보드가 두 화면에서 다르게 배치된다(절대 원칙 1).
+ * 바꾸면 이미 저장된 대시보드의 배치도 함께 움직이니 `DASHBOARD_FORMAT`을 올릴 것.
+ */
+export const GRID_COLS = 12
+export const GRID_ROW_HEIGHT = 40
+/** 카드 사이 간격(px). 어드민 캔버스의 `gap-3`과 같은 값이다. */
+export const GRID_MARGIN = 12
+
 export type ParseResult =
   | { ok: true; dashboard: Dashboard }
   | { ok: false; reason: string }
