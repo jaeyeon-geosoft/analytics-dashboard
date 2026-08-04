@@ -9,9 +9,15 @@ import { GRID_COLS } from "@/shared/lib/dashboard"
 const DEFAULT_W = GRID_COLS / 2
 const DEFAULT_H = 8
 
-/** 카드가 이보다 작아지면 축·범례가 들어갈 자리가 없어 차트가 아니라 얼룩이 된다. */
+/**
+ * 카드가 이보다 작아지면 축·범례가 들어갈 자리가 없어 차트가 아니라 얼룩이 된다.
+ *
+ * 세로 하한은 눈대중이 아니라 카드 내용의 높이에서 나온다 — 머리줄 약 55px(경고가
+ * 두 줄이면 95px)에 플롯의 최소 높이 `min-h-64`(256px)를 더하면 351px이고,
+ * 7칸이 7*40 + 6*12 = 352px다. 이보다 낮추면 플롯이 잘린다.
+ */
 const MIN_W = 3
-const MIN_H = 5
+const MIN_H = 7
 
 export function slotFor(index: number): LayoutItem {
   return {

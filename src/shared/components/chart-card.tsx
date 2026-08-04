@@ -212,7 +212,10 @@ export function ChartCard({
     <section
       onClick={onSelect}
       className={cn(
-        "flex min-h-0 flex-col rounded-2xl border bg-card transition-colors",
+        // `overflow-hidden`이 없으면 카드가 내용보다 작아졌을 때 차트·눈금·스크롤바가
+        // 테두리 밖으로 그대로 흘러나온다. 어드민에서 카드를 줄일 수 있게 되면서
+        // 실제로 그렇게 됐다 — 상자가 내용을 가둬야 모서리의 크기 손잡이도 제자리로 보인다.
+        "flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-card transition-colors",
         !onSelect
           ? "border-border"
           : selected
