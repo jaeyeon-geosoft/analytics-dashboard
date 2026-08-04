@@ -1,4 +1,5 @@
 import { useState } from "react"
+import type { Layout } from "react-grid-layout"
 
 import { TooltipProvider } from "@/shared/components/ui/tooltip"
 import { AppHeader } from "@/admin/components/app-header"
@@ -12,6 +13,7 @@ import {
   MAX_CHARTS,
   type ChartSpec,
 } from "@/shared/lib/chart-spec"
+import { syncLayout } from "@/admin/lib/chart-layout"
 import { addGapColumn } from "@/admin/lib/derive-column"
 import { buildDashboard, downloadDashboard } from "@/admin/lib/export-dashboard"
 import { validateFile } from "@/admin/lib/file-constraints"
@@ -24,6 +26,9 @@ function App() {
   // 차트 명세(종류·매핑·집계)는 카드마다 따로다. 데이터와 컬럼만 파일 단위로 공유한다.
   const [charts, setCharts] = useState<ChartSpec[]>(() => [createChart([])])
   const [activeId, setActiveId] = useState("")
+  // 배치는 명세와 따로 둔다. 종류·매핑은 "무엇을 그리나"고 배치는 "어디에 놓나"라
+  // 서로 바뀌는 계기가 다르고, 내보내는 계약에서도 spec과 layout이 갈려 있다.
+  const [layout, setLayout] = useState<Layout>([])
   // 추론 결과 + 사용자가 고친 타입. 파일과 함께 갈아치운다.
   const [columns, setColumns] = useState<ColumnInfo[]>([])
   // 시트를 바꾸면 다시 읽어야 해서 원본 파일을 들고 있는다. 데이터가 아니라 참조다.
@@ -45,6 +50,7 @@ function App() {
     const fresh = createChart([], active.chartType)
     setCharts([fresh])
     setActiveId(fresh.id)
+    setLayout(syncLayout([fresh.id], []))
     setColumns([])
     setSource(file)
     setState({ status: "loading", fileName: file.name })
@@ -116,7 +122,7 @@ function App() {
   /** API가 붙기 전까지의 임시 통로. 나중에 이 자리가 POST /api/charts가 된다. */
   function handleExport() {
     if (state.status !== "ready") return
-    downloadDashboard(buildDashboard(state.dataset, state.data, columns, charts))
+    downloadDashboard(buildDashboard(state.dataset, state.data, columns, charts, layout))
   }
 
   function handleAddChart() {
@@ -163,6 +169,8 @@ function App() {
               onSelectChart={setActiveId}
               onAddChart={handleAddChart}
               onExport={handleExport}
+              layout={layout}
+              onLayoutChange={setLayout}
               onRemoveChart={(id) =>
                 setCharts((previous) => previous.filter((chart) => chart.id !== id))
               }

@@ -1,4 +1,5 @@
 import { AlertTriangle, Download, Plus } from "lucide-react"
+import GridLayout, { useContainerWidth, type Layout } from "react-grid-layout"
 
 import { Alert, AlertDescription, AlertTitle } from "@/shared/components/ui/alert"
 import { Button } from "@/shared/components/ui/button"
@@ -8,8 +9,9 @@ import { ChartCard } from "@/shared/components/chart-card"
 import type { CanvasState, Dataset } from "@/admin/lib/canvas-state"
 import { MAX_CHARTS, type ChartSpec } from "@/shared/lib/chart-spec"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
+import { syncLayout } from "@/admin/lib/chart-layout"
+import { GRID_COLS, GRID_MARGIN, GRID_ROW_HEIGHT } from "@/shared/lib/dashboard"
 import { MAX_ROWS, type ParsedFile } from "@/admin/lib/parse-file"
-import { cn } from "@/shared/lib/utils"
 
 function CanvasFrame({ title, children }: { title?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -32,6 +34,8 @@ export function ChartCanvas({
   onRemoveChart,
   onExport,
   onFile,
+  layout,
+  onLayoutChange,
 }: {
   state: CanvasState
   charts: ChartSpec[]
@@ -40,6 +44,8 @@ export function ChartCanvas({
   onSelectChart: (id: string) => void
   onAddChart: () => void
   onExport: () => void
+  layout: Layout
+  onLayoutChange: (next: Layout) => void
   onRemoveChart: (id: string) => void
   onFile: (file: File) => void
 }) {
@@ -105,34 +111,90 @@ export function ChartCanvas({
         onExport={onExport}
       />
       {/*
-        `minmax(26rem, 1fr)`: 남는 높이는 행끼리 나눠 갖고(카드 2장이면 그만큼 커진다),
-        모자라면 26rem에서 멈추고 그리드가 스크롤한다. 고정 높이로 두면 카드가 적을 때
-        아래가 텅 빈다.
-
-        스크롤은 그리드가 맡는다. 카드 안쪽(Recharts가 폭을 재는 상자)은 절대 스크롤하지
-        않는다 — 스크롤바가 생겼다 사라지며 폭이 진동하면 무한 재측정에 빠진다.
-        세로 스크롤바가 카드 폭을 흔들지 않도록 자리를 미리 비워둔다.
+        스크롤은 이 바깥 상자가 맡고, 폭을 재는 상자는 그 안이다. 스크롤바 자리를
+        미리 비워둬야(`scrollbar-gutter`) 스크롤바가 생겼다 사라질 때 폭이 15px
+        진동하지 않는다 — 진동하면 재측정이 되먹임에 빠진다(CLAUDE.md).
       */}
-      <div
-        className={cn(
-          "grid min-h-0 flex-1 auto-rows-[minmax(26rem,1fr)] gap-3 overflow-y-auto [scrollbar-gutter:stable]",
-          !single && "xl:grid-cols-2"
-        )}
-      >
-        {charts.map((spec, index) => (
-          <ChartCard
-            key={spec.id}
-            spec={spec}
-            number={index + 1}
-            order={index}
-            data={state.data}
-            columns={columns}
-            selected={spec.id === activeId}
-            onSelect={() => onSelectChart(spec.id)}
-            onRemove={single ? undefined : () => onRemoveChart(spec.id)}
-          />
-        ))}
+      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+        <ChartGrid
+          charts={charts}
+          layout={layout}
+          onLayoutChange={onLayoutChange}
+          activeId={activeId}
+          columns={columns}
+          data={state.data}
+          single={single}
+          onSelectChart={onSelectChart}
+          onRemoveChart={onRemoveChart}
+        />
       </div>
+    </div>
+  )
+}
+
+/**
+ * 카드를 끌어 옮기고 크기를 늘리는 격자. 여기서 정한 배치가 그대로 내보내지고
+ * 뷰어가 같은 자리에 그린다 — 그래서 칸 규격(`GRID_*`)을 shared에서 가져온다.
+ */
+function ChartGrid({
+  charts,
+  layout,
+  onLayoutChange,
+  activeId,
+  columns,
+  data,
+  single,
+  onSelectChart,
+  onRemoveChart,
+}: {
+  charts: ChartSpec[]
+  layout: Layout
+  onLayoutChange: (next: Layout) => void
+  activeId: string
+  columns: ColumnInfo[]
+  data: ParsedFile
+  single: boolean
+  onSelectChart: (id: string) => void
+  onRemoveChart: (id: string) => void
+}) {
+  const { width, containerRef, mounted } = useContainerWidth()
+  // 카드가 늘거나 줄면 배치가 어긋난다. 넘기기 직전에 한 번 맞춘다.
+  const settled = syncLayout(charts.map((spec) => spec.id), layout)
+
+  return (
+    <div ref={containerRef}>
+      {mounted && (
+        <GridLayout
+          width={width}
+          layout={settled}
+          onLayoutChange={onLayoutChange}
+          gridConfig={{
+            cols: GRID_COLS,
+            rowHeight: GRID_ROW_HEIGHT,
+            margin: [GRID_MARGIN, GRID_MARGIN],
+            containerPadding: [0, 0],
+          }}
+          // 카드 안의 버튼·토글을 누르는 것은 드래그가 아니다. 차트 위를 끄는 것은
+          // 드래그가 맞다 — Recharts의 크로스헤어는 버튼을 누르지 않은 이동에만 반응한다.
+          dragConfig={{ cancel: "button,[role=radiogroup]" }}
+        >
+          {charts.map((spec, index) => (
+            // `grid`라 안의 카드가 rgl이 정해준 칸을 그대로 채운다.
+            <div key={spec.id} className="grid">
+              <ChartCard
+                spec={spec}
+                number={index + 1}
+                order={index}
+                data={data}
+                columns={columns}
+                selected={spec.id === activeId}
+                onSelect={() => onSelectChart(spec.id)}
+                onRemove={single ? undefined : () => onRemoveChart(spec.id)}
+              />
+            </div>
+          ))}
+        </GridLayout>
+      )}
     </div>
   )
 }

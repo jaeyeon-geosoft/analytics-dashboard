@@ -1,0 +1,32 @@
+/*
+  react-grid-layout의 기본값을 이 화면의 언어로 바꾼다. 라이브러리 CSS를 직접
+  고치지 않고 뒤에서 덮어쓴다(`main.tsx`에서 이 파일을 나중에 불러온다).
+*/
+
+/*
+  끌고 있는 동안 "여기 놓인다"를 보여주는 자리. 기본값이 새빨간 면이라
+  데이터 마크보다 눈에 띈다 — 안내는 뒤로 물러나야 한다(CLAUDE.md).
+  카드와 같은 모서리에 점선 윤곽만 남긴다.
+*/
+.react-grid-item.react-grid-placeholder {
+  background: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-2xl, 1rem);
+  opacity: 1;
+}
+
+/* 끌고 있는 카드는 다른 카드 위로 올라오고, 그림자로 떠 있는 것을 알린다. */
+.react-grid-item.react-draggable-dragging,
+.react-grid-item.resizing {
+  z-index: 3;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+}
+
+/*
+  크기 조절 손잡이. 기본값은 배경 이미지로 그린 삼각형이라 다크 모드에서 묻힌다.
+  테두리 두 줄로 직접 그려서 두 테마 모두에서 보이게 한다.
+*/
+.react-resizable-handle::after {
+  border-right-color: var(--muted-foreground);
+  border-bottom-color: var(--muted-foreground);
+}

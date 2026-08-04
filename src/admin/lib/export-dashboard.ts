@@ -1,16 +1,11 @@
+import type { Layout } from "react-grid-layout"
+
 import { describeMapping, type ChartSpec } from "@/shared/lib/chart-spec"
-import { DASHBOARD_FORMAT, GRID_COLS, type Dashboard } from "@/shared/lib/dashboard"
+import { slotFor } from "@/admin/lib/chart-layout"
+import { DASHBOARD_FORMAT, type Dashboard } from "@/shared/lib/dashboard"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
 import type { Dataset } from "@/admin/lib/canvas-state"
 import type { ParsedFile } from "@/admin/lib/parse-file"
-
-/**
- * 한 줄에 두 장. 배치 UI가 붙기 전까지의 기본값이라 규칙을 단순하게 둔다.
- * `h`는 어드민 캔버스의 행 높이(`minmax(26rem, …)`)에 맞춘 값이다 —
- * 8칸 = 8*40 + 7*12 = 404px.
- */
-const DEFAULT_W = GRID_COLS / 2
-const DEFAULT_H = 8
 
 /**
  * 지금 어드민에 있는 것을 그대로 `Dashboard`로 만든다.
@@ -22,8 +17,10 @@ export function buildDashboard(
   dataset: Dataset,
   data: ParsedFile,
   columns: ColumnInfo[],
-  charts: ChartSpec[]
+  charts: ChartSpec[],
+  layout: Layout
 ): Dashboard {
+  const placed = new Map(layout.map((item) => [item.i, item]))
   const datasetId = "ds-1"
 
   return {
@@ -45,14 +42,15 @@ export function buildDashboard(
       title: titleOf(spec, index),
       datasetId,
       spec,
-      layout: {
-        x: (index % 2) * DEFAULT_W,
-        y: Math.floor(index / 2) * DEFAULT_H,
-        w: DEFAULT_W,
-        h: DEFAULT_H,
-      },
+      // 화면에서 끌어 놓은 그대로 나간다. 자리를 못 찾으면 기본 칸으로 떨어진다.
+      layout: pick(placed.get(spec.id) ?? slotFor(index)),
     })),
   }
+}
+
+/** 계약에는 x·y·w·h만 있다. rgl이 붙이는 i·minW 같은 것은 넘기지 않는다. */
+function pick({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+  return { x, y, w, h }
 }
 
 /**
