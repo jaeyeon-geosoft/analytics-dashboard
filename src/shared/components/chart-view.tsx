@@ -241,6 +241,66 @@ function valueDomain(
 }
 
 /** 마크 하나가 이보다 좁아지면 못 읽는다. 이 밑으로 내려가면 창을 잘라 스크롤로 넘긴다. */
+/**
+ * X축 눈금을 **몇 개 찍을지 폭에서 정한다.**
+ *
+ * 개수를 고정하면 좁은 카드에서 라벨이 서로 겹쳐 눈금이 통째로 뭉갠다 — 12개로
+ * 박아뒀더니 6칸 카드(플롯 ~700px)에서 타임스탬프가 다 겹쳤다. 같은 12개가 8칸
+ * 카드에서는 멀쩡히 읽혔으니 폭만의 문제다.
+ *
+ * **`interval`은 그래도 숫자로 넘겨야 한다.** Recharts에 맡기면 어느 눈금을 감출지
+ * 정하려고 모든 라벨의 폭을 재는데, 시계열은 점이 3,000개라 95초를 잡아먹었다.
+ * 그래서 폭은 우리가 재고 결과는 숫자 하나로 준다.
+ *
+ * 라벨 폭은 글자로 어림한다 — 실제로 재려면 결국 Recharts가 하던 그 일이 된다.
+ * 한글은 11px 글꼴에서 대략 정사각형이고 숫자·영문은 그 절반쯤이다.
+ */
+const TICK_FONT = 11
+const TICK_GAP = 12
+const MAX_TICKS = 12
+
+function useTickInterval(
+  rows: ChartFrame["rows"],
+  format: (value: string, max: number) => string,
+  max: number
+) {
+  const measureRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    const element = measureRef.current
+    if (!element) return
+    // 이 상자는 스크롤하지 않는다. 스크롤하는 상자를 재면 스크롤바 유무로 폭이
+    // 진동해 재측정이 되먹임에 빠진다(CLAUDE.md).
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  const labelWidth = useMemo(() => {
+    // 눈금은 등간격으로 뽑히고 잘린 라벨은 길이가 고만고만하다. 전부 훑을 이유가 없다.
+    const step = Math.max(1, Math.floor(rows.length / 40))
+    let widest = 0
+    for (let i = 0; i < rows.length; i += step) {
+      let px = 0
+      for (const ch of format(String(rows[i].x), max)) {
+        px += ch.charCodeAt(0) > 0x2e80 ? TICK_FONT : TICK_FONT * 0.56
+      }
+      if (px > widest) widest = px
+    }
+    return widest
+  }, [rows, format, max])
+
+  // 아직 못 쟀으면 종전 값(12)으로 그린다. 다음 프레임에 제자리를 찾는다.
+  const fits =
+    width > 0 && labelWidth > 0
+      ? Math.floor(width / (labelWidth + TICK_GAP))
+      : MAX_TICKS
+  const ticks = Math.max(1, Math.min(MAX_TICKS, fits))
+
+  return { measureRef, interval: Math.max(0, Math.ceil(rows.length / ticks) - 1) }
+}
+
 const MIN_SLOT = 28
 
 type PlotWindow = {
@@ -464,6 +524,7 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
   const dual = frame.series.some((entry) => entry.axis === "right")
   const axis = useCategoryAxis(frame)
   const rows = frame.rows
+  const { measureRef, interval: tickInterval } = useTickInterval(rows, axis.format, axis.max)
 
   // 축이 둘이면 최대값도 축마다 따로 잡는다 — 한 스케일로 묶으면 오른쪽 축을 세운
   // 이유가 없어진다. 대신 **둘 다 0에서 시작**한다. 두 축을 임의로 어긋나게 맞추면
@@ -510,6 +571,8 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
       yRightLabel={frame.y2Label}
       colors={dual ? [SLOTS[0], SLOTS[1]] : undefined}
     >
+      {/* 폭을 재는 상자. ChartContainer가 absolute라 잴 자리를 따로 둔다. */}
+      <div ref={measureRef} className="absolute inset-0">
       <ChartContainer config={config} className="absolute inset-0 aspect-auto">
         <Chart
           data={rows}
@@ -527,7 +590,7 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={{ stroke: GRID }}
-            interval={Math.max(0, Math.ceil(rows.length / 12) - 1)}
+            interval={tickInterval}
             tickFormatter={(value: string) => axis.format(value, axis.max)}
           />
           {/*
@@ -595,6 +658,7 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
           {referenceLines(frame, false)}
         </Chart>
       </ChartContainer>
+      </div>
     </AxisFrame>
   )
 }
