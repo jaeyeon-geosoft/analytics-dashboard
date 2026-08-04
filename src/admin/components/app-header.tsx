@@ -15,7 +15,7 @@ export function AppHeader({ onFile }: { onFile: (file: File) => void }) {
           <rect x="14" y="6" width="3.5" height="9" rx="1" />
         </svg>
       </div>
-      <h1 className="text-sm font-semibold tracking-tight">차트 뷰어</h1>
+      <h1 className="text-sm font-semibold tracking-tight">차트 설정</h1>
 
       <div className="ml-auto flex items-center gap-1.5">
         <Button asChild variant="outline" size="sm">
