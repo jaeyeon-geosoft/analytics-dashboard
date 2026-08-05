@@ -6,12 +6,11 @@ import { Button } from "@/shared/components/ui/button"
 import { Skeleton } from "@/shared/components/ui/skeleton"
 import { FileDropzone } from "@/admin/components/file-dropzone"
 import { ChartCard } from "@/shared/components/chart-card"
-import type { CanvasState, Dataset } from "@/admin/lib/canvas-state"
-import { MAX_CHARTS, type ChartSpec } from "@/shared/lib/chart-spec"
-import type { ColumnInfo } from "@/shared/lib/infer-types"
+import type { AdminChart, AdminDataset, OpenState } from "@/admin/lib/canvas-state"
+import { MAX_CHARTS } from "@/shared/lib/chart-spec"
 import { syncLayout } from "@/admin/lib/chart-layout"
 import { GRID_COLS, GRID_MARGIN, GRID_ROW_HEIGHT } from "@/shared/lib/dashboard"
-import { MAX_ROWS, type ParsedFile } from "@/admin/lib/parse-file"
+import { MAX_ROWS } from "@/admin/lib/parse-file"
 
 function CanvasFrame({ title, children }: { title?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -25,10 +24,10 @@ function CanvasFrame({ title, children }: { title?: React.ReactNode; children: R
 }
 
 export function ChartCanvas({
-  state,
+  datasets,
+  open,
   charts,
   activeId,
-  columns,
   onSelectChart,
   onAddChart,
   onRemoveChart,
@@ -37,10 +36,10 @@ export function ChartCanvas({
   layout,
   onLayoutChange,
 }: {
-  state: CanvasState
-  charts: ChartSpec[]
+  datasets: AdminDataset[]
+  open: OpenState
+  charts: AdminChart[]
   activeId: string
-  columns: ColumnInfo[]
   onSelectChart: (id: string) => void
   onAddChart: () => void
   onExport: () => void
@@ -49,52 +48,50 @@ export function ChartCanvas({
   onRemoveChart: (id: string) => void
   onFile: (file: File) => void
 }) {
-  if (state.status === "empty") {
-    return (
-      <CanvasFrame>
-        <FileDropzone onFile={onFile} className="h-full flex-1 justify-center border-0" />
-      </CanvasFrame>
-    )
-  }
-
-  if (state.status === "loading") {
-    return (
-      <CanvasFrame
-        title={
-          <>
-            <p className="font-mono text-sm">{state.fileName}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">읽는 중…</p>
-          </>
-        }
-      >
-        <div className="flex min-h-0 flex-1 items-center">
-          <div className="flex h-44 w-full items-end gap-3 border-b border-l border-border">
-            {[68, 42, 88, 55, 74, 36, 61].map((height, index) => (
-              <Skeleton
-                key={index}
-                className="flex-1 rounded-none rounded-t-sm"
-                style={{ height: `${height}%` }}
-              />
-            ))}
+  // 열린 파일이 아직 없다 — 화면 전체가 파일을 여는 자리다.
+  if (datasets.length === 0) {
+    if (open.status === "loading") {
+      return (
+        <CanvasFrame
+          title={
+            <>
+              <p className="font-mono text-sm">{open.fileName}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">읽는 중…</p>
+            </>
+          }
+        >
+          <div className="flex min-h-0 flex-1 items-center">
+            <div className="flex h-44 w-full items-end gap-3 border-b border-l border-border">
+              {[68, 42, 88, 55, 74, 36, 61].map((height, index) => (
+                <Skeleton
+                  key={index}
+                  className="flex-1 rounded-none rounded-t-sm"
+                  style={{ height: `${height}%` }}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      </CanvasFrame>
-    )
-  }
+        </CanvasFrame>
+      )
+    }
 
-  if (state.status === "error") {
     return (
       <CanvasFrame>
-        <Alert variant="destructive" className="mb-5">
-          <AlertTriangle />
-          <AlertTitle>파일을 열지 못했습니다</AlertTitle>
-          <AlertDescription>
-            {state.fileName && <span className="font-mono">{state.fileName}</span>}
-            {state.fileName && " — "}
-            {state.message}
-          </AlertDescription>
-        </Alert>
-        <FileDropzone onFile={onFile} className="flex-1 justify-center" />
+        {open.status === "error" && (
+          <Alert variant="destructive" className="mb-5">
+            <AlertTriangle />
+            <AlertTitle>파일을 열지 못했습니다</AlertTitle>
+            <AlertDescription>
+              {open.fileName && <span className="font-mono">{open.fileName}</span>}
+              {open.fileName && " — "}
+              {open.message}
+            </AlertDescription>
+          </Alert>
+        )}
+        <FileDropzone
+          onFile={onFile}
+          className={open.status === "error" ? "flex-1 justify-center" : "h-full flex-1 justify-center border-0"}
+        />
       </CanvasFrame>
     )
   }
@@ -103,10 +100,25 @@ export function ChartCanvas({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {/*
+        파일이 열려 있는데 읽기가 실패했다면 열린 것을 치우지 않는다 — 시트를 잘못
+        고른 것뿐일 수 있고, 그 사실만 위에 얹으면 된다.
+      */}
+      {open.status === "error" && (
+        <Alert variant="destructive" className="shrink-0">
+          <AlertTriangle />
+          <AlertTitle>파일을 열지 못했습니다</AlertTitle>
+          <AlertDescription>
+            {open.fileName && <span className="font-mono">{open.fileName}</span>}
+            {open.fileName && " — "}
+            {open.message}
+          </AlertDescription>
+        </Alert>
+      )}
       <DatasetBar
-        dataset={state.dataset}
-        data={state.data}
+        dataset={datasets[0]}
         count={charts.length}
+        reading={open.status === "loading"}
         onAddChart={onAddChart}
         onExport={onExport}
       />
@@ -118,11 +130,10 @@ export function ChartCanvas({
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <ChartGrid
           charts={charts}
+          datasets={datasets}
           layout={layout}
           onLayoutChange={onLayoutChange}
           activeId={activeId}
-          columns={columns}
-          data={state.data}
           single={single}
           onSelectChart={onSelectChart}
           onRemoveChart={onRemoveChart}
@@ -138,28 +149,33 @@ export function ChartCanvas({
  */
 function ChartGrid({
   charts,
+  datasets,
   layout,
   onLayoutChange,
   activeId,
-  columns,
-  data,
   single,
   onSelectChart,
   onRemoveChart,
 }: {
-  charts: ChartSpec[]
+  charts: AdminChart[]
+  datasets: AdminDataset[]
   layout: Layout
   onLayoutChange: (next: Layout) => void
   activeId: string
-  columns: ColumnInfo[]
-  data: ParsedFile
   single: boolean
   onSelectChart: (id: string) => void
   onRemoveChart: (id: string) => void
 }) {
   const { width, containerRef, mounted } = useContainerWidth()
+  const byId = new Map(datasets.map((dataset) => [dataset.id, dataset]))
+  // 파일을 지우면 그 파일을 보던 카드도 함께 지워지므로 짝은 항상 있다. 타입을 좁히려고
+  // 한 번 거르고, 거른 결과로 배치를 맞춘다 — 둘이 어긋나면 rgl이 빈 자리를 남긴다.
+  const cards = charts.flatMap((chart) => {
+    const dataset = byId.get(chart.datasetId)
+    return dataset ? [{ chart, dataset }] : []
+  })
   // 카드가 늘거나 줄면 배치가 어긋난다. 넘기기 직전에 한 번 맞춘다.
-  const settled = syncLayout(charts.map((spec) => spec.id), layout)
+  const settled = syncLayout(cards.map(({ chart }) => chart.spec.id), layout)
 
   return (
     <div ref={containerRef}>
@@ -178,18 +194,18 @@ function ChartGrid({
           // 드래그가 맞다 — Recharts의 크로스헤어는 버튼을 누르지 않은 이동에만 반응한다.
           dragConfig={{ cancel: "button,[role=radiogroup]" }}
         >
-          {charts.map((spec, index) => (
+          {cards.map(({ chart, dataset }, index) => (
             // `grid`라 안의 카드가 rgl이 정해준 칸을 그대로 채운다.
-            <div key={spec.id} className="grid">
+            <div key={chart.spec.id} className="grid">
               <ChartCard
-                spec={spec}
+                spec={chart.spec}
                 number={index + 1}
                 order={index}
-                data={data}
-                columns={columns}
-                selected={spec.id === activeId}
-                onSelect={() => onSelectChart(spec.id)}
-                onRemove={single ? undefined : () => onRemoveChart(spec.id)}
+                data={dataset.data}
+                columns={dataset.columns}
+                selected={chart.spec.id === activeId}
+                onSelect={() => onSelectChart(chart.spec.id)}
+                onRemove={single ? undefined : () => onRemoveChart(chart.spec.id)}
               />
             </div>
           ))}
@@ -202,17 +218,19 @@ function ChartGrid({
 /** 파일 단위 정보와 경고. 카드마다 반복하면 같은 문장을 네 번 읽게 된다. */
 function DatasetBar({
   dataset,
-  data,
   count,
+  reading,
   onAddChart,
   onExport,
 }: {
-  dataset: Dataset
-  data: ParsedFile
+  dataset: AdminDataset
   count: number
+  /** 같은 파일을 다른 시트·헤더 행으로 다시 읽는 중. 카드는 그대로 두고 여기서만 알린다. */
+  reading: boolean
   onAddChart: () => void
   onExport: () => void
 }) {
+  const { data } = dataset
   const caveats = [
     data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
     data.errorCount > 0 && `${data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
@@ -227,7 +245,9 @@ function DatasetBar({
           {dataset.name}
         </p>
         <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-          {data.rows.length.toLocaleString()}행 · {data.columns.length}개 컬럼
+          {reading
+            ? "읽는 중…"
+            : `${data.rows.length.toLocaleString()}행 · ${data.columns.length}개 컬럼`}
         </p>
         {caveats.length > 0 && (
           <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
