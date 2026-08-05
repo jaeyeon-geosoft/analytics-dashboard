@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/shared/components/ui/aler
 import { Button } from "@/shared/components/ui/button"
 import { Separator } from "@/shared/components/ui/separator"
 import { TooltipProvider } from "@/shared/components/ui/tooltip"
+import { BrandMark } from "@/shared/components/brand-mark"
 import { ThemeToggle } from "@/shared/components/theme-toggle"
 import type { Dashboard } from "@/shared/lib/dashboard"
 import { DashboardGrid } from "@/viewer/components/dashboard-grid"
@@ -28,11 +29,13 @@ export default function ViewerApp() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex h-dvh flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+        <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-4">
+          {/* 어드민과 같은 마크. 두 화면이 한 제품이라는 것을 여기서 보여준다. */}
+          <BrandMark />
           <div className="min-w-0 flex-1">
             {dashboard ? (
               <>
-                <h1 className="truncate text-sm font-semibold tracking-tight">
+                <h1 className="truncate text-base font-bold tracking-[-0.02em]">
                   {dashboard.title}
                 </h1>
                 {/* 어느 파일에서 나온 차트인지 밝힌다 — 대시보드 하나에 파일이 섞일 수 있다. */}
@@ -42,7 +45,7 @@ export default function ViewerApp() {
                 </p>
               </>
             ) : (
-              <h1 className="text-sm font-semibold tracking-tight">차트 보기</h1>
+              <h1 className="text-base leading-none font-bold tracking-[-0.02em]">차트 보기</h1>
             )}
           </div>
           <OpenButton onFile={open} label={dashboard ? "다른 대시보드" : "대시보드 열기"} />

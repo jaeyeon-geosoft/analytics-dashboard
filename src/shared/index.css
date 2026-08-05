@@ -7,6 +7,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+/*
+  Inter에는 한글 글리프가 없다. 이것만 두면 한글은 웹폰트가 아니라 OS 기본 폰트로
+  떨어져서(맥 Apple SD Gothic Neo / 윈도우 맑은 고딕) 기기마다 다르게 보인다.
+  Pretendard가 한글을 맡는다 — 동적 서브셋이라 실제로 받는 건 쓰는 글자 범위뿐이다.
+*/
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -43,7 +49,7 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Inter Variable', sans-serif;
+  --font-sans: 'Pretendard Variable', 'Inter Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

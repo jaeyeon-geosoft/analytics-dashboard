@@ -49,7 +49,7 @@ src/
 - **Vite `root`가 앱 폴더다**(`src/admin` / `src/viewer`). 진입 HTML은 자기 앱 폴더 안에 `index.html`로 있고 `./main.tsx`를 가리킨다. dev 서버가 **그 앱 하나만** 연다 — 어드민 서버에서 뷰어는 안 보인다. 포트는 5173(어드민) / 5174(뷰어)로 못 박혀 있다(`strictPort`).
 - 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(2026-08-05 확인: 어드민 911KB + xlsx 493KB → 뷰어 734KB). **차이가 크지 않은 것은 Recharts가 양쪽을 다 차지하기 때문이다** — 갈라놓는 값어치는 크기보다 "뷰어에 파서가 아예 없다"는 데 있다.
 - **`src/shared/index.css`의 `@source "../shared"`를 지우지 말 것.** Tailwind는 Vite의 `root`만 자동 스캔하는데 `shared/`가 그 바깥이라, 빼면 shared에만 있는 클래스가 빌드 CSS에서 통째로 빠진다 — 실제로 `h-7`·`border-separate`가 빠져 표가 깨졌다. 앱 폴더를 더 만들면 여기도 같이 볼 것.
-- CSS도 앱별로 갈린다(어드민 66KB / 뷰어 56KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다.
+- CSS도 앱별로 갈린다(어드민 115KB / 뷰어 104KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다. 덩치의 대부분은 Pretendard 동적 서브셋의 `@font-face` 92벌이라 양쪽 공통이고, 앱별 차이는 여전히 10KB 남짓이다.
 - **`cacheDir`도 앱별로 갈라놨다. 지우지 말 것.** 기본값이면 둘 다 루트의 `node_modules/.vite`를 쓰는데, 설정이 서로 달라서 한쪽을 띄울 때마다 다른 쪽 캐시를 지우고 다시 만든다. 그러면 켜둔 탭이 들고 있던 `?v=` 해시가 사라져 **동적 import가 404로 죽는다** — 실제로 엑셀을 열 때 `Failed to fetch dynamically imported module: …/deps/xlsx.js?v=…`로 터졌다. SheetJS만 터지는 건 그것만 동적 import라 파일을 여는 순간 받아오기 때문이다(CSV는 papaparse가 정적이라 멀쩡하다).
 - `apps/*` + `packages/*` + workspace로 가는 것은 **뷰어 전용 의존성이 생기거나, 세 번째 앱이 생기거나, 빌드 시간이 아파질 때.** 그때 `src/shared/`를 통째로 옮기면 되므로 미리 하지 않는다.
 
@@ -59,6 +59,7 @@ src/
 - **Vite 8** + **React 19** + **TypeScript 6**
 - **Tailwind CSS 4** — `@tailwindcss/vite` 플러그인 방식, `tailwind.config` 파일 없음. 테마는 전부 `src/shared/index.css`의 CSS 변수.
 - **shadcn/ui** — style `radix-rhea`, baseColor `neutral`, 아이콘 `lucide-react`
+- **폰트: Pretendard(한글) + Inter(라틴)** — Inter에는 한글 글리프가 없어서 그것만 두면 한글이 OS 기본 폰트로 떨어진다(맥·윈도우가 서로 다르게 보인다). `--font-sans`가 Pretendard를 먼저 본다. **동적 서브셋 CSS를 쓸 것**(`pretendardvariable-dynamic-subset.css`) — 통짜 파일은 2MB고, 서브셋이면 쓰는 글자 범위만 받는다(실측 9벌).
 - **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 렌더러는 `src/shared/components/chart-view.tsx` 한 곳이고, Recharts에서 반복해서 걸리는 함정은 [docs/lessons.md](docs/lessons.md#recharts에서-걸린-것들)의 표에 모아뒀다.
 - **CSV/TSV 파서: papaparse** — `src/admin/lib/parse-file.ts`에서만 쓴다. 순수 파서라 네트워크 호출 없음.
 - **Excel 파서: SheetJS(`xlsx`)** — npm 레지스트리 버전은 `0.18.5`에서 멈췄고 알려진 취약점이 있어서, **벤더 CDN 타르볼로 고정**되어 있다(`package.json`의 URL). 빌드 시점 설치일 뿐 런타임 네트워크 호출은 없다. 버전을 올릴 때도 같은 방식으로.
