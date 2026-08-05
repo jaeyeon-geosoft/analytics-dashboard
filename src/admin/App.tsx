@@ -18,7 +18,6 @@ import {
   MAX_CHARTS,
   type ChartSpec,
 } from "@/shared/lib/chart-spec"
-import { syncLayout } from "@/admin/lib/chart-layout"
 import { addGapColumn } from "@/admin/lib/derive-column"
 import { buildDashboard, downloadDashboard } from "@/admin/lib/export-dashboard"
 import { validateFile } from "@/admin/lib/file-constraints"
@@ -51,10 +50,6 @@ function App() {
 
   // 지운 카드가 선택돼 있었으면 첫 카드로 흘러내린다 — 지울 때 따로 손대지 않아도 된다.
   const active = charts.find((chart) => chart.spec.id === activeId) ?? charts[0] ?? null
-  // 사이드바가 보여줄 파일은 **지금 편집 중인 카드가 보는 파일**이다. 컬럼 타입을 고치면
-  // 그 파일을 보는 카드들이 따라 바뀌므로, 어느 파일을 고치는 중인지가 화면과 맞아야 한다.
-  const activeDataset = datasets.find((dataset) => dataset.id === active?.datasetId) ?? null
-
   /**
    * 파일을 읽어 데이터셋으로 만든다.
    *
@@ -68,11 +63,6 @@ function App() {
       return
     }
 
-    if (!replaces) {
-      // 아직 파일을 하나만 다룬다. 새 파일을 열면 앞의 것을 통째로 대신한다.
-      setDatasets([])
-      setCharts([])
-    }
     setOpen({ status: "loading", fileName: file.name })
 
     try {
@@ -102,12 +92,15 @@ function App() {
         )
       } else {
         const dataset = createDataset(file, data, columns)
+        setDatasets((previous) => [...previous, dataset])
         // 열자마자 차트가 보여야 한다. 고르고 있던 차트 종류만 넘겨받고 필수 슬롯을 채운다.
-        const spec = createChart(columns, active?.spec.chartType)
-        setDatasets([dataset])
-        setCharts([{ spec, datasetId: dataset.id }])
-        setActiveId(spec.id)
-        setLayout(syncLayout([spec.id], []))
+        // 카드가 이미 상한이면 파일만 들인다 — 그 사실은 캔버스 바가 말하고, 기존 카드의
+        // "파일" 선택으로 이 파일을 볼 수 있다.
+        if (charts.length < MAX_CHARTS) {
+          const spec = createChart(columns, active?.spec.chartType)
+          setCharts((previous) => [...previous, { spec, datasetId: dataset.id }])
+          setActiveId(spec.id)
+        }
       }
       setOpen({ status: "idle" })
     } catch (error) {
@@ -150,6 +143,28 @@ function App() {
     )
   }
 
+  /** 선택된 카드가 볼 파일을 바꾼다. 컬럼이 통째로 달라지므로 매핑을 다시 맞춘다. */
+  function handleChartDataset(datasetId: string) {
+    const dataset = datasets.find((entry) => entry.id === datasetId)
+    if (!active || !dataset) return
+    setCharts((previous) =>
+      previous.map((chart) =>
+        chart.spec.id === active.spec.id
+          ? { ...chart, datasetId, spec: withColumns(chart.spec, dataset.columns) }
+          : chart
+      )
+    )
+  }
+
+  /**
+   * 파일을 닫으면 그 파일을 보던 카드도 함께 사라진다 — 데이터가 없는 카드는 그릴 것이
+   * 없다. 무엇이 함께 사라지는지는 파일 줄의 번호 배지가 미리 보여준다.
+   */
+  function handleCloseDataset(datasetId: string) {
+    setDatasets((previous) => previous.filter((entry) => entry.id !== datasetId))
+    setCharts((previous) => previous.filter((chart) => chart.datasetId !== datasetId))
+  }
+
   /** 시차 컬럼은 후보로 나타나기만 한다. 묻지도 않았는데 매핑을 바꾸지 않는다. */
   function handleDeriveGap(datasetId: string, name: string) {
     const dataset = datasets.find((entry) => entry.id === datasetId)
@@ -190,20 +205,24 @@ function App() {
         */}
         <div className="flex flex-1 flex-col-reverse lg:min-h-0 lg:flex-row">
           <SettingsSidebar
-            dataset={activeDataset}
-            onColumnTypeChange={handleColumnType}
-            chart={active?.spec ?? null}
+            datasets={datasets}
+            charts={charts}
+            chart={active}
             chartNumber={active ? charts.indexOf(active) + 1 : 0}
-            chartCount={charts.length}
+            onColumnTypeChange={handleColumnType}
             onChartChange={handleChartChange}
+            onChartDataset={handleChartDataset}
             onDeriveGap={handleDeriveGap}
             onSheetChange={(datasetId, sheet) => reopen(datasetId, { sheet })}
             onHeaderRowChange={(datasetId, headerRow) =>
               reopen(datasetId, {
-                sheet: activeDataset?.data.sheet ?? undefined,
+                // 시트를 유지한 채 헤더 행만 바꾼다. 그 파일이 지금 읽고 있는 시트여야 한다.
+                sheet:
+                  datasets.find((entry) => entry.id === datasetId)?.data.sheet ?? undefined,
                 headerRow,
               })
             }
+            onCloseDataset={handleCloseDataset}
             onFile={(file) => loadFile(file, {})}
           />
           <main className="flex min-w-0 flex-1 flex-col p-4 lg:min-h-0">

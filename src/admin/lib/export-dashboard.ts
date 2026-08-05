@@ -48,7 +48,10 @@ export function buildDashboard(
 function dashboardTitle(datasets: AdminDataset[]): string {
   const [first, ...rest] = datasets
   if (!first) return "대시보드"
-  return rest.length > 0 ? `${first.name} 외 ${rest.length}개` : first.name
+  if (rest.length === 0) return first.name
+  // 확장자를 **여기서** 뗀다. 뒤에 " 외 2개"가 붙고 나면 `baseName`이 마지막 점 뒤를
+  // 확장자로 보고 통째로 잘라내서 이름이 "sales"만 남는다.
+  return `${first.name.replace(/\.[^.]+$/, "")} 외 ${rest.length}개`
 }
 
 /** 계약에는 x·y·w·h만 있다. rgl이 붙이는 i·minW 같은 것은 넘기지 않는다. */

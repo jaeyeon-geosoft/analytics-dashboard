@@ -116,9 +116,9 @@ export function ChartCanvas({
         </Alert>
       )}
       <DatasetBar
-        dataset={datasets[0]}
+        datasets={datasets}
         count={charts.length}
-        reading={open.status === "loading"}
+        reading={open.status === "loading" ? open.fileName : null}
         onAddChart={onAddChart}
         onExport={onExport}
       />
@@ -217,38 +217,50 @@ function ChartGrid({
 
 /** 파일 단위 정보와 경고. 카드마다 반복하면 같은 문장을 네 번 읽게 된다. */
 function DatasetBar({
-  dataset,
+  datasets,
   count,
   reading,
   onAddChart,
   onExport,
 }: {
-  dataset: AdminDataset
+  datasets: AdminDataset[]
   count: number
-  /** 같은 파일을 다른 시트·헤더 행으로 다시 읽는 중. 카드는 그대로 두고 여기서만 알린다. */
-  reading: boolean
+  /** 읽는 중인 파일 이름. 카드는 그대로 두고 여기서만 알린다. */
+  reading: string | null
   onAddChart: () => void
   onExport: () => void
 }) {
-  const { data } = dataset
-  const caveats = [
-    data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
-    data.errorCount > 0 && `${data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
-  ].filter(Boolean)
+  const single = datasets.length === 1
+  // 파일이 여럿이면 어느 파일의 경고인지 밝혀야 한다. 하나면 이름이 이미 위에 있다.
+  const caveats = datasets.flatMap((dataset) =>
+    [
+      dataset.data.truncated && `상한 ${MAX_ROWS.toLocaleString()}행까지만 읽었습니다.`,
+      dataset.data.errorCount > 0 &&
+        `${dataset.data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
+    ]
+      .filter((note): note is string => typeof note === "string")
+      .map((note) => (single ? note : `${dataset.name}: ${note}`))
+  )
 
   const full = count >= MAX_CHARTS
+  const rows = datasets.reduce((total, dataset) => total + dataset.data.rows.length, 0)
 
   return (
     <div className="flex shrink-0 items-start gap-4 rounded-2xl border border-border bg-card px-5 py-3.5">
       <div className="min-w-0 flex-1">
-        <p className="truncate font-mono text-sm" title={dataset.name}>
-          {dataset.name}
+        <p className="truncate font-mono text-sm" title={datasets.map((d) => d.name).join(" · ")}>
+          {single ? datasets[0].name : `파일 ${datasets.length}개`}
         </p>
-        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-          {reading
-            ? "읽는 중…"
-            : `${data.rows.length.toLocaleString()}행 · ${data.columns.length}개 컬럼`}
+        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+          {single
+            ? `${rows.toLocaleString()}행 · ${datasets[0].data.columns.length}개 컬럼`
+            : `${rows.toLocaleString()}행 · ${datasets.map((d) => d.name).join(" · ")}`}
         </p>
+        {reading && (
+          <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+            {reading} 읽는 중…
+          </p>
+        )}
         {caveats.length > 0 && (
           <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
             <AlertTriangle className="mt-px size-3.5 shrink-0" />

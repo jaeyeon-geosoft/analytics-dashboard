@@ -1,5 +1,12 @@
-import { FileSpreadsheet, Info, Replace } from "lucide-react"
+import { useState } from "react"
+import { AlertTriangle, Info, Plus, X } from "lucide-react"
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/shared/components/ui/accordion"
 import { Button } from "@/shared/components/ui/button"
 import { Label } from "@/shared/components/ui/label"
 import { ScrollArea } from "@/shared/components/ui/scroll-area"
@@ -20,12 +27,17 @@ import {
   type Aggregation,
   type Reference,
 } from "@/shared/lib/aggregate"
-import type { AdminDataset } from "@/admin/lib/canvas-state"
+import type { AdminChart, AdminDataset } from "@/admin/lib/canvas-state"
 import { withChartType, withMapping, type ChartSpec } from "@/shared/lib/chart-spec"
 import type { ChartType } from "@/shared/lib/chart-types"
 import { canDeriveGap, gapColumnName } from "@/admin/lib/derive-column"
 import { ACCEPT_ATTR, formatBytes } from "@/admin/lib/file-constraints"
-import { COLUMN_TYPE_LABELS, type ColumnInfo, type ColumnType } from "@/shared/lib/infer-types"
+import {
+  COLUMN_TYPE_LABELS,
+  columnWarning,
+  type ColumnInfo,
+  type ColumnType,
+} from "@/shared/lib/infer-types"
 import {
   MAPPING_SLOTS,
   allowsReference,
@@ -250,22 +262,300 @@ function ChoiceRow<T extends string>({
 }
 
 /**
+ * 카드 번호.
+ *
+ * 이 배지는 세 곳에 **같은 모양으로** 선다 — 파일 목록(이 파일을 쓰는 카드), 사이드바
+ * 머리줄(지금 편집 중인 카드), 캔버스 카드. 셋이 같은 번호로 꿰여야 "어느 파일이 어느
+ * 카드로 가는지"가 글로 설명하지 않아도 읽힌다. 파일을 닫을 때 무엇이 함께 사라지는지도
+ * 여기서 보인다.
+ */
+function CardBadge({ number, current }: { number: number; current?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold tabular-nums",
+        current ? "bg-foreground text-background" : "bg-muted text-muted-foreground"
+      )}
+    >
+      {number}
+    </span>
+  )
+}
+
+/** 파일 하나에 대해 사용자가 확인해야 할 것들. 접혀 있어도 ⚠로 보인다. */
+function fileNotes(dataset: AdminDataset): string[] {
+  const uncertain = dataset.columns.filter((column) => columnWarning(column) !== null).length
+  return [
+    dataset.data.truncated && "행 상한에 걸려 뒷부분을 읽지 않았습니다.",
+    dataset.data.errorCount > 0 &&
+      `${dataset.data.errorCount.toLocaleString()}개 행이 헤더와 모양이 다릅니다.`,
+    uncertain > 0 && `컬럼 ${uncertain}개의 타입을 확인해 주세요.`,
+  ].filter((note): note is string => typeof note === "string")
+}
+
+/**
+ * 열어둔 파일 하나. 접으면 이름·크기·이 파일을 쓰는 카드만 남고, 펼치면 그 파일을
+ * 어떻게 읽을지(시트·헤더 행)와 컬럼 타입이 나온다.
+ *
+ * 닫기 버튼은 **트리거 바깥 형제**로 둔다. 트리거 안에 넣으면 버튼 안의 버튼이 되고,
+ * `asChild`로 겹치면 Radix가 `data-state`를 덮어써 펼침 상태가 죽는다(CLAUDE.md).
+ */
+function FileRow({
+  dataset,
+  users,
+  currentChartId,
+  onColumnTypeChange,
+  onDeriveGap,
+  onSheetChange,
+  onHeaderRowChange,
+  onClose,
+}: {
+  dataset: AdminDataset
+  /** 이 파일을 보고 있는 카드들. 번호는 캔버스의 카드 순서다. */
+  users: { number: number; id: string }[]
+  currentChartId?: string
+  onColumnTypeChange: (datasetId: string, name: string, type: ColumnType) => void
+  onDeriveGap: (datasetId: string, name: string) => void
+  onSheetChange: (datasetId: string, name: string) => void
+  onHeaderRowChange: (datasetId: string, row: number) => void
+  onClose: () => void
+}) {
+  const { data, columns } = dataset
+  const notes = fileNotes(dataset)
+
+  // 시차를 만들 수 있는 컬럼: 시각이 든 날짜 컬럼이고, 아직 안 만든 것.
+  const names = new Set(columns.map((column) => column.name))
+  const gapSources = new Set(
+    columns
+      .filter(
+        (column) =>
+          column.type === "date" &&
+          !names.has(gapColumnName(column.name)) &&
+          canDeriveGap(data.rows, column.name)
+      )
+      .map((column) => column.name)
+  )
+
+  const closeLabel =
+    users.length > 0
+      ? `${dataset.name} 닫기 — 차트 ${users.map((user) => user.number).join(", ")}도 함께 사라집니다`
+      : `${dataset.name} 닫기`
+
+  return (
+    <AccordionItem value={dataset.id} className="relative">
+      {/*
+        `pr-10`은 셰브론이 설 자리다. 셰브론은 트리거 콘텐츠의 끝(오른쪽에서 40~56px)에
+        서고 닫기 버튼은 그 바깥(12~28px)에 선다 — 둘을 눈대중으로 두면 겹쳐서 어느 쪽을
+        눌렀는지 모르게 된다.
+      */}
+      <AccordionTrigger className="gap-2 px-4 py-3 pr-10 hover:no-underline">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-xs" title={dataset.name}>
+            {dataset.name}
+          </span>
+          <span className="mt-1 flex items-center gap-1.5">
+            <span className="min-w-0 truncate font-mono text-[11px] font-normal text-muted-foreground">
+              {formatBytes(dataset.size)}
+              {` · ${data.rows.length.toLocaleString()}행`}
+              {/* Excel은 인코딩 개념이 없어서 null이다. */}
+              {data.encoding && data.encoding !== "utf-8" && ` · ${data.encoding.toUpperCase()}`}
+            </span>
+            {notes.length > 0 && (
+              <AlertTriangle className="size-3 shrink-0 text-muted-foreground" />
+            )}
+            <span className="ml-auto flex shrink-0 gap-1">
+              {users.map((user) => (
+                <CardBadge key={user.id} number={user.number} current={user.id === currentChartId} />
+              ))}
+            </span>
+          </span>
+        </span>
+      </AccordionTrigger>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel}
+        title={closeLabel}
+        className="absolute top-3 right-3 rounded text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        <X className="size-4" />
+      </button>
+
+      <AccordionContent className="space-y-2 pb-3">
+        {notes.length > 0 && (
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            <AlertTriangle className="mt-px size-3 shrink-0" />
+            <span>{notes.join(" ")}</span>
+          </p>
+        )}
+
+        {/* 헤더가 1행이 아닌 파일(제목 줄이 위에 붙은 리포트)을 위한 선택. */}
+        {data.preview.length > 1 && (
+          <div className={ROW}>
+            <div className="flex items-center gap-1">
+              <Label htmlFor={`header-row-${dataset.id}`} className="text-xs text-muted-foreground">
+                헤더 행
+              </Label>
+              <Hint>
+                컬럼 이름이 적힌 줄입니다.
+                <br />
+                제목 줄이 위에 붙은 파일만 바꾸면 됩니다.
+              </Hint>
+            </div>
+            <Select
+              value={String(data.headerRow)}
+              onValueChange={(next) => onHeaderRowChange(dataset.id, Number(next))}
+            >
+              <SelectTrigger
+                id={`header-row-${dataset.id}`}
+                size="sm"
+                className="w-full min-w-0 text-xs"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {data.preview.map((cells, index) => (
+                  <SelectItem key={index} value={String(index + 1)} className="text-xs">
+                    <span className="shrink-0 text-muted-foreground">{index + 1}행</span>
+                    {/* 트리거 안에서는 이 줄이 좁은 사이드바를 넘치면 안 된다. */}
+                    <span className="ml-1.5 min-w-0 truncate font-mono">{rowSummary(cells)}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* 시트가 하나뿐이면 고를 게 없다. */}
+        {data.sheets.length > 1 && (
+          <div className={ROW}>
+            <Label htmlFor={`sheet-${dataset.id}`} className="text-xs text-muted-foreground">
+              시트
+            </Label>
+            <Select
+              value={data.sheet ?? undefined}
+              onValueChange={(next) => onSheetChange(dataset.id, next)}
+            >
+              <SelectTrigger
+                id={`sheet-${dataset.id}`}
+                size="sm"
+                className="w-full min-w-0 font-mono text-xs"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {data.sheets.map((name) => (
+                  <SelectItem key={name} value={name} className="font-mono text-xs">
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {columns.length > 0 && (
+          <div>
+            <div className="mt-1 mb-1.5 flex items-center gap-1.5">
+              <h3 className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                컬럼 {columns.length}개
+              </h3>
+              <Hint>
+                컬럼의 값이 맞는지 확인하세요.
+                <br />이 파일을 쓰는 차트의 선택지가 함께 바뀝니다.
+              </Hint>
+            </div>
+            <ColumnList
+              columns={columns}
+              onTypeChange={(name, type) => onColumnTypeChange(dataset.id, name, type)}
+              gapSources={gapSources}
+              onDeriveGap={(name) => onDeriveGap(dataset.id, name)}
+            />
+          </div>
+        )}
+      </AccordionContent>
+    </AccordionItem>
+  )
+}
+
+/** 파일을 고르는 버튼. `<input type=file>`은 감춰두고 라벨이 버튼 노릇을 한다. */
+function OpenFileButton({
+  onFile,
+  children,
+}: {
+  onFile: (file: File) => void
+  children: React.ReactNode
+}) {
+  return (
+    <Button asChild variant="outline" size="sm" className="mt-2 w-full">
+      <label className="cursor-pointer">
+        {children}
+        <input
+          type="file"
+          accept={ACCEPT_ATTR}
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) onFile(file)
+            event.target.value = ""
+          }}
+        />
+      </label>
+    </Button>
+  )
+}
+
+/**
  * 선택된 카드가 무엇을 그리는지. 카드가 없으면(파일 열기 전) 통째로 빠진다 —
  * 고를 컬럼이 없는데 빈 선택지만 늘어놓을 이유가 없다.
  */
 function ChartSettings({
   chart,
   columns,
+  datasets,
+  datasetId,
   onChartChange,
+  onDatasetChange,
 }: {
   chart: ChartSpec
   columns: ColumnInfo[]
+  /** 고를 수 있는 파일들. 하나뿐이면 고를 것이 없어 이 줄을 내놓지 않는다. */
+  datasets: AdminDataset[]
+  datasetId: string
   onChartChange: (next: ChartSpec) => void
+  onDatasetChange: (datasetId: string) => void
 }) {
   const { chartType, mapping, aggregation, reference } = chart
 
   return (
     <>
+      {/* 시트 선택과 같은 규칙 — 고를 것이 둘 이상일 때만 내놓는다. */}
+      {datasets.length > 1 && (
+        <section>
+          <div className={ROW}>
+            <Label htmlFor="chart-dataset" className="text-xs text-muted-foreground">
+              파일
+            </Label>
+            <Select value={datasetId} onValueChange={onDatasetChange}>
+              <SelectTrigger
+                id="chart-dataset"
+                size="sm"
+                className="w-full min-w-0 font-mono text-xs"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {datasets.map((dataset) => (
+                  <SelectItem key={dataset.id} value={dataset.id} className="font-mono text-xs">
+                    {dataset.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </section>
+      )}
+
       <section>
         <SectionLabel>차트 종류</SectionLabel>
         <ChartTypePicker
@@ -313,50 +603,57 @@ function ChartSettings({
 }
 
 export function SettingsSidebar({
-  dataset,
-  onColumnTypeChange,
+  datasets,
+  charts,
   chart,
   chartNumber,
-  chartCount,
+  onColumnTypeChange,
   onChartChange,
+  onChartDataset,
   onSheetChange,
   onHeaderRowChange,
   onDeriveGap,
+  onCloseDataset,
   onFile,
 }: {
-  /** 선택된 카드가 보고 있는 파일. 컬럼 타입을 고치면 그 파일을 보는 카드들이 따라 바뀐다. */
-  dataset: AdminDataset | null
-  onColumnTypeChange: (datasetId: string, name: string, type: ColumnType) => void
+  /** 열어둔 파일 전부. 목록이자 카드가 고를 수 있는 후보다. */
+  datasets: AdminDataset[]
+  /** 어느 카드가 어느 파일을 보는지. 파일 목록의 번호 배지가 여기서 나온다. */
+  charts: AdminChart[]
   /**
    * 지금 편집 중인 카드. 종류·매핑·집계·기준선은 한 덩어리라 통째로 받는다 —
    * 넷을 값·핸들러 여덟 개로 풀어 받으면 사이드바가 쓰지도 않는 것을 나르기만 한다.
    */
-  chart: ChartSpec | null
+  chart: AdminChart | null
   /** 그 카드의 번호. 캔버스의 같은 배지와 짝이 된다. */
   chartNumber: number
-  chartCount: number
+  onColumnTypeChange: (datasetId: string, name: string, type: ColumnType) => void
   onChartChange: (next: ChartSpec) => void
+  onChartDataset: (datasetId: string) => void
   onSheetChange: (datasetId: string, name: string) => void
   onHeaderRowChange: (datasetId: string, row: number) => void
   onDeriveGap: (datasetId: string, name: string) => void
+  onCloseDataset: (datasetId: string) => void
   onFile: (file: File) => void
 }) {
-  const data = dataset?.data ?? null
-  const columns = dataset?.columns ?? []
+  // 지금 카드가 보는 파일을 펼쳐 둔다. 파일을 새로 열면 그 파일을 보는 카드가 곧바로
+  // 선택되므로, "방금 연 파일이 펼쳐진다"도 이 규칙 하나에서 나온다.
+  //
+  // effect가 아니라 렌더 중에 맞춘다 — effect에서 setState하면 이미 그린 뒤에 한 번 더
+  // 그리게 되고(접힌 상태가 한 프레임 스친다), 그 사이 사용자가 접으면 되살아난다.
+  const [open, setOpen] = useState<string | undefined>(chart?.datasetId)
+  const [syncedTo, setSyncedTo] = useState(chart?.datasetId)
+  if (syncedTo !== chart?.datasetId) {
+    setSyncedTo(chart?.datasetId)
+    setOpen(chart?.datasetId)
+  }
 
-  // 시차를 만들 수 있는 컬럼: 시각이 든 날짜 컬럼이고, 아직 안 만든 것.
-  const names = new Set(columns.map((column) => column.name))
-  const gapSources = new Set(
-    columns
-      .filter(
-        (column) =>
-          column.type === "date" &&
-          !names.has(gapColumnName(column.name)) &&
-          data !== null &&
-          canDeriveGap(data.rows, column.name)
-      )
-      .map((column) => column.name)
-  )
+  const dataset = datasets.find((entry) => entry.id === chart?.datasetId) ?? null
+  const columns = dataset?.columns ?? []
+  const usersOf = (datasetId: string) =>
+    charts
+      .map((entry, index) => ({ number: index + 1, id: entry.spec.id, datasetId: entry.datasetId }))
+      .filter((entry) => entry.datasetId === datasetId)
 
   return (
     <aside className="flex w-full shrink-0 flex-col border-t border-border lg:h-full lg:w-72 lg:border-t-0 lg:border-r">
@@ -374,142 +671,71 @@ export function SettingsSidebar({
         */}
         <div className="mx-auto max-w-lg space-y-6 p-4 lg:mx-0 lg:max-w-none">
           <section>
-            <SectionLabel>데이터셋</SectionLabel>
-            {dataset ? (
-              <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5">
-                <FileSpreadsheet className="size-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-xs" title={dataset.name}>
-                    {dataset.name}
-                  </p>
-                  <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                    {formatBytes(dataset.size)}
-                    {data && ` · ${data.rows.length.toLocaleString()}행`}
-                    {/* Excel은 인코딩 개념이 없어서 null이다. */}
-                    {data?.encoding && data.encoding !== "utf-8" &&
-                      ` · ${data.encoding.toUpperCase()}`}
-                  </p>
-                </div>
-                <Button asChild variant="ghost" size="icon-xs" aria-label="다른 파일로 교체">
-                  <label className="cursor-pointer">
-                    <Replace />
-                    <input
-                      type="file"
-                      accept={ACCEPT_ATTR}
-                      className="sr-only"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0]
-                        if (file) onFile(file)
-                        event.target.value = ""
-                      }}
-                    />
-                  </label>
-                </Button>
-              </div>
+            <SectionLabel
+              hint={
+                <>
+                  차트에 쓸 파일입니다.
+                  <br />
+                  파일을 열면 그 파일을 보는 차트가 한 장 생깁니다.
+                  <br />
+                  줄 오른쪽의 번호는 그 파일을 쓰고 있는 차트입니다.
+                </>
+              }
+            >
+              파일{datasets.length > 0 && ` ${datasets.length}개`}
+            </SectionLabel>
+
+            {datasets.length > 0 ? (
+              <Accordion type="single" collapsible value={open} onValueChange={setOpen}>
+                {datasets.map((entry) => (
+                  <FileRow
+                    key={entry.id}
+                    dataset={entry}
+                    users={usersOf(entry.id)}
+                    currentChartId={chart?.spec.id}
+                    onColumnTypeChange={onColumnTypeChange}
+                    onDeriveGap={onDeriveGap}
+                    onSheetChange={onSheetChange}
+                    onHeaderRowChange={onHeaderRowChange}
+                    onClose={() => onCloseDataset(entry.id)}
+                  />
+                ))}
+              </Accordion>
             ) : (
               <p className="rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
                 열린 파일이 없습니다.
               </p>
             )}
 
-            {/* 헤더가 1행이 아닌 파일(제목 줄이 위에 붙은 리포트)을 위한 선택. */}
-            {data && data.preview.length > 1 && (
-              <div className={cn("mt-2", ROW)}>
-                <div className="flex items-center gap-1">
-                  <Label htmlFor="header-row" className="text-xs text-muted-foreground">
-                    헤더 행
-                  </Label>
-                  <Hint>
-                    컬럼 이름이 적힌 줄입니다.
-                    <br />
-                    제목 줄이 위에 붙은 파일만 바꾸면 됩니다.
-                  </Hint>
-                </div>
-                <Select
-                  value={String(data.headerRow)}
-                  onValueChange={(next) => dataset && onHeaderRowChange(dataset.id, Number(next))}
-                >
-                  <SelectTrigger id="header-row" size="sm" className="w-full min-w-0 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {data.preview.map((cells, index) => (
-                      <SelectItem key={index} value={String(index + 1)} className="text-xs">
-                        <span className="shrink-0 text-muted-foreground">{index + 1}행</span>
-                        {/* 트리거 안에서는 이 줄이 좁은 사이드바를 넘치면 안 된다. */}
-                        <span className="ml-1.5 min-w-0 truncate font-mono">
-                          {rowSummary(cells)}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* 시트가 하나뿐이면 고를 게 없다. */}
-            {data && data.sheets.length > 1 && (
-              <div className={cn("mt-2", ROW)}>
-                <Label htmlFor="sheet" className="text-xs text-muted-foreground">
-                  시트
-                </Label>
-                <Select
-                  value={data.sheet ?? undefined}
-                  onValueChange={(next) => dataset && onSheetChange(dataset.id, next)}
-                >
-                  <SelectTrigger id="sheet" size="sm" className="w-full min-w-0 font-mono text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {data.sheets.map((name) => (
-                      <SelectItem key={name} value={name} className="font-mono text-xs">
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <OpenFileButton onFile={onFile}>
+              <Plus />
+              파일 열기
+            </OpenFileButton>
           </section>
 
-          {dataset && columns.length > 0 && (
-            <section>
-              <SectionLabel
-                hint={
-                  <>
-                    컬럼의 값이 맞는지 확인하세요.
-                    <br />
-                    수정하면 아래 선택지가 자동으로 바뀝니다.
-                  </>
-                }
-              >
-                컬럼 {columns.length}개
-              </SectionLabel>
-              <ColumnList
-                columns={columns}
-                onTypeChange={(name, type) => onColumnTypeChange(dataset.id, name, type)}
-                gapSources={gapSources}
-                onDeriveGap={(name) => onDeriveGap(dataset.id, name)}
-              />
-            </section>
-          )}
-
           {/*
-            차트가 여러 장이면 아래 설정이 "그중 어느 장"의 것인지 먼저 말해야 한다.
-            한 장뿐일 때는 물을 것이 없으니 띄우지 않는다.
+            여기서 층이 바뀐다 — 위는 파일, 아래는 그중 한 카드의 설정이다. 카드가
+            한 장이고 파일도 하나면 헷갈릴 것이 없으니 띄우지 않는다.
           */}
-          {chartCount > 1 && (
+          {chart && (charts.length > 1 || datasets.length > 1) && (
             <div className="flex items-center gap-2 border-t border-border pt-5">
-              <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-foreground text-[11px] font-semibold text-background tabular-nums">
-                {chartNumber}
-              </span>
+              <CardBadge number={chartNumber} current />
               <h2 className="text-xs font-medium">차트 {chartNumber}</h2>
-              <span className="ml-auto text-[11px] text-muted-foreground">카드를 눌러 전환</span>
+              {charts.length > 1 && (
+                <span className="ml-auto text-[11px] text-muted-foreground">카드를 눌러 전환</span>
+              )}
             </div>
           )}
 
           {chart && (
-            <ChartSettings chart={chart} columns={columns} onChartChange={onChartChange} />
+            <ChartSettings
+              chart={chart.spec}
+              columns={columns}
+              datasets={datasets}
+              datasetId={chart.datasetId}
+              onChartChange={onChartChange}
+              onDatasetChange={onChartDataset}
+            />
           )}
         </div>
       </ScrollArea>
