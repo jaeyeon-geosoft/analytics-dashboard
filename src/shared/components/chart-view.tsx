@@ -67,11 +67,35 @@ function seriesColor(index: number, multi: boolean): string {
   return multi ? SLOTS[index] : SINGLE
 }
 
-/** 축 눈금은 자릿수를 줄여 읽히게 한다. 1234567 → 1.2M */
-function compact(value: number): string {
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-  return Number.isInteger(value) ? String(value) : value.toFixed(2)
+/**
+ * 축 눈금은 자릿수를 줄여 읽히게 한다. 1234567 → 1.2M
+ *
+ * `span`(축 전체 폭)을 주면 **자릿수를 거기서 정한다.** 자릿수를 못 박으면 축이 좁을 때
+ * 눈금이 전부 같은 글자가 된다 — 12,480~12,550 구간에서 "12.5K"가 다섯 번 찍혔다.
+ * 축을 좁혀 놓고 눈금을 못 읽으면 좁힌 의미가 없다.
+ */
+function compact(value: number, span = 0): string {
+  const size = Math.abs(value)
+  const unit = size >= 1_000_000 ? 1_000_000 : size >= 1_000 ? 1_000 : 1
+  const suffix = unit === 1_000_000 ? "M" : unit === 1_000 ? "K" : ""
+  const scaled = value / unit
+
+  // 범위를 모르면 예전대로 — 산점도처럼 축을 Recharts에 맡기는 자리다.
+  if (!(span > 0)) {
+    if (unit === 1) return Number.isInteger(value) ? String(value) : value.toFixed(2)
+    return `${scaled.toFixed(1)}${suffix}`
+  }
+
+  // 눈금 간격(축을 다섯 칸으로 본다)이 이 단위에서 몇 번째 소수 자리에 오는지.
+  const step = span / 5 / unit
+  const digits = Math.min(4, Math.max(unit === 1 ? 0 : 1, Math.ceil(-Math.log10(step))))
+  return `${scaled.toFixed(digits)}${suffix}`
+}
+
+/** 축 하나의 눈금 포맷터. 참조가 매 렌더 바뀌면 Recharts가 다시 재니 memo해서 쓴다. */
+function tickFormatFor(domain?: [number, number]) {
+  const span = domain ? domain[1] - domain[0] : 0
+  return (value: number) => compact(value, span)
 }
 
 function configFor(series: ChartSeries[]): ChartConfig {
@@ -176,6 +200,17 @@ function valueAxisName(frame: ChartFrame): string {
 }
 
 /**
+ * 축이 0에서 시작하지 않으면 이름에 적는다.
+ *
+ * 자동으로 좁히되 **숨기지는 않는다.** 원래 "축은 0에서 시작" 규칙이 걱정한 것은
+ * 잘린 축 자체가 아니라 잘린 줄 모르고 읽는 것이다. 기준선 값도 선이 아니라 축
+ * 이름에 적는 것과 같은 자리다.
+ */
+function withOffsetNote(label: string, offset: boolean): string {
+  return offset ? `${label} (0부터 아님)` : label
+}
+
+/**
  * 기준선.
  *
  * 파선인 것은 dataviz의 "격자선을 점선으로 긋지 말 것"과 어긋나지 않는다 — 그 규칙은
@@ -213,31 +248,81 @@ function niceCeil(value: number): number {
 }
 
 /**
+ * 0을 껴 넣은 축에서 데이터가 이만큼도 차지하지 못하면 선의 모양을 읽을 수 없다.
+ *
+ * 눈대중이 아니다 — 플롯 높이가 250px일 때 10%는 25px이고, 그건 눈금 한 칸도 못
+ * 움직이는 변화다. 실제로 겪은 것은 훨씬 심했다: 누적 항해거리가 12,480~12,540을
+ * 오가는데 축이 0~20,000으로 잡혀 데이터가 축의 **0.3%**만 차지했고, 선은 완전한
+ * 일직선으로 그려졌다.
+ */
+const FLAT_RATIO = 0.1
+
+type ValueAxis = {
+  domain: [number, number] | undefined
+  /** 축이 0에서 시작하지 않는다. 축 이름에 밝혀야 한다 — 조용히 자르면 오독한다. */
+  offset: boolean
+}
+
+/**
  * 값 축의 범위. 창을 옮길 때마다 축이 다시 잡히면 창끼리 비교가 거짓말이 되므로
  * **보이는 창이 아니라 전체**를 기준으로 고정한다.
  *
- * 음수가 섞이면 0을 바닥으로 잡을 수 없다. 그때는 `undefined`로 Recharts에 맡긴다.
+ * **막대는 언제나 0에서 시작한다**(`anchorZero`). 막대는 길이가 곧 값이라 0에서
+ * 끊으면 "2배"가 "5배"로 보인다 — 이건 타협할 수 없다.
+ *
+ * **선·영역은 다르다.** 값은 길이가 아니라 점의 위치이고, 정보는 선의 **모양**이다.
+ * CLAUDE.md의 "축은 0에서 시작"도 괄호에 "(막대 차트)"라고 범위를 적어두고 있고,
+ * 산점도·궤적은 이미 같은 이유로 예외다. 그래서 선·영역에서는 0을 끼웠을 때 변화가
+ * 읽히지 않을 때에 한해 축을 데이터 범위로 좁히고, **좁혔다는 사실을 축 이름에 적는다.**
  */
 function valueDomain(
   frame: ChartFrame,
   series: ChartSeries[],
-  stacked: boolean
-): [number, number] | undefined {
-  let peak = 0
+  { stacked = false, anchorZero }: { stacked?: boolean; anchorZero: boolean }
+): ValueAxis {
+  let peak = Number.NEGATIVE_INFINITY
+  let floor = Number.POSITIVE_INFINITY
+
   for (const row of frame.rows) {
     if (stacked) {
       let total = 0
       for (const entry of series) total += Number(row[entry.key]) || 0
       if (total > peak) peak = total
+      if (total < floor) floor = total
     } else {
       for (const entry of series) {
-        const value = Number(row[entry.key]) || 0
+        const value = Number(row[entry.key])
+        if (!Number.isFinite(value)) continue
         if (value > peak) peak = value
+        if (value < floor) floor = value
       }
     }
   }
-  const top = niceCeil(peak)
-  return top > 0 ? [0, top] : undefined
+  if (!Number.isFinite(peak) || !Number.isFinite(floor)) return { domain: undefined, offset: false }
+
+  // 0을 포함한 축. 음수가 있으면 바닥도 0 아래로 내려간다 — 예전에는 하한을 0으로
+  // 박아서 **음수가 통째로 잘려 나갔다.**
+  const zeroTop = niceCeil(Math.max(peak, 0))
+  const zeroBottom = -niceCeil(Math.max(-floor, 0))
+  const zeroed: ValueAxis = {
+    domain: zeroTop > zeroBottom ? [zeroBottom, zeroTop] : undefined,
+    offset: false,
+  }
+  if (anchorZero) return zeroed
+
+  const span = peak - floor
+  const height = zeroTop - zeroBottom
+  // 0을 껴도 읽히면 그대로 둔다. 굳이 축을 띄울 이유가 없다.
+  if (span <= 0 || height <= 0 || span / height >= FLAT_RATIO) return zeroed
+
+  // 눈금이 될 만한 단위로 바깥쪽으로 떨어뜨린다. 값의 크기가 아니라 **변화폭**의
+  // 크기로 잡아야 한다 — 12,480에 10^4를 쓰면 10,000으로 떨어져 다시 평평해진다.
+  const step = 10 ** Math.floor(Math.log10(span))
+  const pad = span * 0.05
+  return {
+    domain: [Math.floor((floor - pad) / step) * step, Math.ceil((peak + pad) / step) * step],
+    offset: true,
+  }
 }
 
 /** 마크 하나가 이보다 좁아지면 못 읽는다. 이 밑으로 내려가면 창을 잘라 스크롤로 넘긴다. */
@@ -526,16 +611,36 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
   const rows = frame.rows
   const { measureRef, interval: tickInterval } = useTickInterval(rows, axis.format, axis.max)
 
-  // 축이 둘이면 최대값도 축마다 따로 잡는다 — 한 스케일로 묶으면 오른쪽 축을 세운
-  // 이유가 없어진다. 대신 **둘 다 0에서 시작**한다. 두 축을 임의로 어긋나게 맞추면
-  // 선이 교차하는 자리가 달라져서 데이터에 없는 상관관계가 보인다.
-  const [leftDomain, rightDomain] = useMemo(() => {
-    if (!dual) return [valueDomain(frame, frame.series, false), undefined]
-    return [
-      valueDomain(frame, frame.series.filter((entry) => entry.axis !== "right"), false),
-      valueDomain(frame, frame.series.filter((entry) => entry.axis === "right"), false),
-    ]
+  /*
+    축이 둘이면 범위도 축마다 따로 잡는다 — 한 스케일로 묶으면 오른쪽 축을 세운
+    이유가 없어진다.
+
+    예전에는 여기서 **둘 다 0에서 시작**하게 못 박았다. 두 축을 어긋나게 맞추면 선이
+    교차하는 자리가 달라져 없는 상관관계가 보인다는 이유였는데, **그 가드레일은 실효가
+    없었다.** 같은 값을 단위만 바꾼 두 컬럼(knots / km-h, 정확히 ×1.852)을 넣었더니
+    두 축이 0~20과 0~30, 즉 1:1.5로 잡혀서 겹쳐야 할 두 선이 어긋나 보였다. 0에서
+    시작했는데도 거짓 관계가 그려진 것이다.
+
+    거짓말을 실제로 막는 것은 이미 있는 것들이다 — 범례의 (좌)/(우), 축 이름 옆의 색
+    마크, 표 보기. 그래서 0 강제는 걷어내고 단일 축과 같은 규칙을 쓴다.
+  */
+  const [left, right] = useMemo(() => {
+    if (!dual) return [valueDomain(frame, frame.series, { anchorZero: false }), undefined]
+    const on = (side: "left" | "right") =>
+      valueDomain(
+        frame,
+        frame.series.filter((entry) =>
+          side === "right" ? entry.axis === "right" : entry.axis !== "right"
+        ),
+        { anchorZero: false }
+      )
+    return [on("left"), on("right")]
   }, [frame, dual])
+
+  const leftDomain = left.domain
+  const rightDomain = right?.domain
+  const formatLeft = useMemo(() => tickFormatFor(leftDomain), [leftDomain])
+  const formatRight = useMemo(() => tickFormatFor(rightDomain), [rightDomain])
 
   /*
     최신값 한 점에만 직접 라벨. 모든 점에 숫자를 찍으면 아무도 안 읽는다(CLAUDE.md).
@@ -567,8 +672,10 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
   return (
     <AxisFrame
       xLabel={axis.label}
-      yLabel={valueAxisName(frame)}
-      yRightLabel={frame.y2Label}
+      yLabel={withOffsetNote(valueAxisName(frame), left.offset)}
+      yRightLabel={
+        frame.y2Label && withOffsetNote(frame.y2Label, right?.offset ?? false)
+      }
       colors={dual ? [SLOTS[0], SLOTS[1]] : undefined}
     >
       {/* 폭을 재는 상자. ChartContainer가 absolute라 잴 자리를 따로 둔다. */}
@@ -604,7 +711,7 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
             axisLine={false}
             width={52}
             domain={leftDomain}
-            tickFormatter={compact}
+            tickFormatter={formatLeft}
           />
           {dual && (
             <YAxis
@@ -615,7 +722,7 @@ function TimelineView({ frame, chartType }: { frame: ChartFrame; chartType: Char
               axisLine={false}
               width={52}
               domain={rightDomain}
-              tickFormatter={compact}
+              tickFormatter={formatRight}
             />
           )}
           {/* 선·영역은 크로스헤어 + 한 번에 전 시리즈를 읽는 툴팁 */}
@@ -712,7 +819,12 @@ function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType
     () => labeled.slice(plot.start, plot.start + plot.size),
     [labeled, plot.start, plot.size]
   )
-  const domain = useMemo(() => valueDomain(frame, frame.series, stacked), [frame, stacked])
+  // 막대는 길이가 곧 값이라 **언제나** 0에서 시작한다. 여기엔 예외가 없다.
+  const domain = useMemo(
+    () => valueDomain(frame, frame.series, { stacked, anchorZero: true }).domain,
+    [frame, stacked]
+  )
+  const formatValue = useMemo(() => tickFormatFor(domain), [domain])
 
   return (
     // 가로 막대는 축이 뒤집힌다 — 아래가 값, 왼쪽이 범주. 기준선 값은 그 선이 놓인
@@ -744,7 +856,7 @@ function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType
                 tickLine={false}
                 axisLine={{ stroke: GRID }}
                 domain={domain}
-                tickFormatter={compact}
+                tickFormatter={formatValue}
               />
               <YAxis
                 type="category"
@@ -773,7 +885,7 @@ function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType
                 axisLine={false}
                 width={52}
                 domain={domain}
-                tickFormatter={compact}
+                tickFormatter={formatValue}
               />
             </>
           )}
@@ -890,7 +1002,7 @@ function ScatterView({ frame, connected }: { frame: ScatterFrame; connected?: bo
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={{ stroke: GRID }}
-            tickFormatter={compact}
+            tickFormatter={(value) => compact(value)}
           />
           <YAxis
             type="number"
@@ -901,7 +1013,7 @@ function ScatterView({ frame, connected }: { frame: ScatterFrame; connected?: bo
             tickLine={false}
             axisLine={false}
             width={52}
-            tickFormatter={compact}
+            tickFormatter={(value) => compact(value)}
           />
           {/*
             ZAxis로 점 크기를 지정하지 않는다. Recharts 3에서 dataKey 없는 range는
