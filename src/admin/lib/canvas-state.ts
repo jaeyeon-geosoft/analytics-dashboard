@@ -10,6 +10,14 @@ import type { ParsedFile } from "@/admin/lib/parse-file"
 export type AdminDataset = {
   /** 내보낼 때 `datasetId`가 된다. */
   id: string
+  /**
+   * 같은 파일에서 나온 데이터셋들이 공유하는 값.
+   *
+   * **시트가 다르면 데이터셋이 다르다** — 컬럼도 행도 다르니 같은 표가 아니다. 하지만
+   * 사용자가 보기에 파일은 하나이므로, 카드의 "파일" 선택은 이 단위로 묶고 "시트"는
+   * 그 안에서 고른다.
+   */
+  fileId: string
   name: string
   size: number
   /**
@@ -47,7 +55,31 @@ export type AdminChart = {
 // 세션 안에서만 겹치지 않으면 된다. 번호가 그대로 드러나 디버깅도 쉽다(`chart-spec.ts`와 같은 방식).
 let counter = 0
 
-export function createDataset(file: File, data: ParsedFile, columns: ColumnInfo[]): AdminDataset {
+/**
+ * `fileId`를 주면 그 파일의 **다른 시트**를 들이는 것이고, 안 주면 새로 연 파일이다.
+ * 같은 파일을 파일 열기로 두 번 열면 각각 다른 `fileId`가 된다 — 사용자가 두 번 연
+ * 것이니 목록에도 둘로 서는 편이 정직하다.
+ */
+export function createDataset(
+  file: File,
+  data: ParsedFile,
+  columns: ColumnInfo[],
+  fileId?: string
+): AdminDataset {
   counter += 1
-  return { id: `ds-${counter}`, name: file.name, size: file.size, source: file, data, columns }
+  return {
+    id: `ds-${counter}`,
+    fileId: fileId ?? `file-${counter}`,
+    name: file.name,
+    size: file.size,
+    source: file,
+    data,
+    columns,
+  }
+}
+
+/** 화면에 보일 이름. 시트가 여럿인 워크북이면 **어느 시트인지까지** 밝힌다. */
+export function datasetLabel(dataset: AdminDataset): string {
+  const { sheet, sheets } = dataset.data
+  return sheet && sheets.length > 1 ? `${dataset.name} › ${sheet}` : dataset.name
 }

@@ -24,6 +24,12 @@ import { validateFile } from "@/admin/lib/file-constraints"
 import { parseFile, type ParsedFile, type ParseOptions } from "@/admin/lib/parse-file"
 import { inferColumns, type ColumnType } from "@/shared/lib/infer-types"
 
+/** 읽은 것을 어디에 놓을지. `loadFile`의 세 갈래가 여기서 갈린다. */
+type LoadTarget =
+  | { kind: "open" }
+  | { kind: "reread"; datasetId: string }
+  | { kind: "bind"; chartId: string; fileId: string }
+
 /** 읽기는 성공했는데 그릴 것이 없는 경우. 파싱 실패와 문구가 달라야 한다. */
 function shapeProblem(data: ParsedFile): string | null {
   if (data.columns.length === 0) {
@@ -51,12 +57,16 @@ function App() {
   // 지운 카드가 선택돼 있었으면 첫 카드로 흘러내린다 — 지울 때 따로 손대지 않아도 된다.
   const active = charts.find((chart) => chart.spec.id === activeId) ?? charts[0] ?? null
   /**
-   * 파일을 읽어 데이터셋으로 만든다.
+   * 파일을 읽어 데이터셋으로 만든다. 읽은 것을 어디에 놓을지가 `target`이다.
    *
-   * `replaces`가 있으면 그 데이터셋을 **같은 자리에** 갈아끼운다(시트·헤더 행 변경).
-   * 없으면 새로 연 파일이다.
+   * - `open` — 새로 연 파일. 데이터셋을 들이고 그걸 보는 카드를 한 장 만든다.
+   * - `reread` — 같은 데이터셋을 다른 헤더 행으로 다시 읽는다. **제자리 교체**라
+   *   그 데이터셋을 보는 카드가 전부 따라 바뀐다(그게 맞다 — 같은 표를 다시 읽은 것).
+   * - `bind` — **그 카드만** 새 데이터셋으로 옮긴다. 시트를 바꿀 때 쓴다. 시트가 다르면
+   *   컬럼도 행도 다른 **다른 표**라, 제자리 교체하면 같은 파일을 보던 다른 카드까지
+   *   끌려간다(실제로 그랬다).
    */
-  async function loadFile(file: File, options: ParseOptions, replaces?: string) {
+  async function loadFile(file: File, options: ParseOptions, target: LoadTarget = { kind: "open" }) {
     const rejected = validateFile(file)
     if (rejected) {
       setOpen({ status: "error", fileName: file.name, message: rejected })
@@ -75,18 +85,28 @@ function App() {
 
       const columns = inferColumns(data.columns, data.rows)
 
-      if (replaces) {
+      if (target.kind === "reread") {
+        const { datasetId } = target
         setDatasets((previous) =>
           previous.map((dataset) =>
-            dataset.id === replaces ? { ...dataset, data, columns } : dataset
+            dataset.id === datasetId ? { ...dataset, data, columns } : dataset
           )
         )
-        // 컬럼이 통째로 달라졌다. **이 파일을 보는 카드만** 다시 맞춘다 — 다른 파일에
-        // 붙은 카드는 아무 상관이 없다.
+        // 컬럼이 통째로 달라졌다. **이 데이터셋을 보는 카드만** 다시 맞춘다.
         setCharts((previous) =>
           previous.map((chart) =>
-            chart.datasetId === replaces
+            chart.datasetId === datasetId
               ? { ...chart, spec: withColumns(chart.spec, columns) }
+              : chart
+          )
+        )
+      } else if (target.kind === "bind") {
+        const dataset = createDataset(file, data, columns, target.fileId)
+        setDatasets((previous) => [...previous, dataset])
+        setCharts((previous) =>
+          previous.map((chart) =>
+            chart.spec.id === target.chartId
+              ? { ...chart, datasetId: dataset.id, spec: withColumns(chart.spec, columns) }
               : chart
           )
         )
@@ -112,10 +132,52 @@ function App() {
     }
   }
 
-  /** 시트·헤더 행을 바꾸면 같은 파일을 그 설정으로 다시 읽는다. */
-  function reopen(datasetId: string, options: ParseOptions) {
+  /** 헤더 행을 바꾸면 같은 표를 그 설정으로 다시 읽는다. 같은 데이터셋 자리에 들어간다. */
+  function handleHeaderRow(datasetId: string, headerRow: number) {
     const dataset = datasets.find((entry) => entry.id === datasetId)
-    if (dataset) loadFile(dataset.source, options, datasetId)
+    if (!dataset) return
+    loadFile(
+      dataset.source,
+      { sheet: dataset.data.sheet ?? undefined, headerRow },
+      { kind: "reread", datasetId }
+    )
+  }
+
+  /**
+   * 선택된 카드가 볼 시트를 바꾼다.
+   *
+   * **데이터셋을 갈아끼우지 않고 새로 만든다.** 시트가 다르면 다른 표라서, 제자리에서
+   * 바꾸면 같은 파일을 보던 다른 카드까지 함께 끌려간다. 이미 들여둔 시트면 그걸
+   * 가리키기만 하므로 다시 읽지 않는다.
+   */
+  function handleChartSheet(sheet: string) {
+    if (!active) return
+    const current = datasets.find((entry) => entry.id === active.datasetId)
+    if (!current || current.data.sheet === sheet) return
+
+    const loaded = datasets.find(
+      (entry) => entry.fileId === current.fileId && entry.data.sheet === sheet
+    )
+    if (loaded) {
+      bindChart(active.spec.id, loaded)
+      return
+    }
+    loadFile(
+      current.source,
+      { sheet },
+      { kind: "bind", chartId: active.spec.id, fileId: current.fileId }
+    )
+  }
+
+  /** 카드를 이미 들여둔 데이터셋에 붙인다. 컬럼이 달라지므로 매핑을 다시 맞춘다. */
+  function bindChart(chartId: string, dataset: AdminDataset) {
+    setCharts((previous) =>
+      previous.map((chart) =>
+        chart.spec.id === chartId
+          ? { ...chart, datasetId: dataset.id, spec: withColumns(chart.spec, dataset.columns) }
+          : chart
+      )
+    )
   }
 
   function handleColumnType(datasetId: string, name: string, type: ColumnType) {
@@ -143,17 +205,13 @@ function App() {
     )
   }
 
-  /** 선택된 카드가 볼 파일을 바꾼다. 컬럼이 통째로 달라지므로 매핑을 다시 맞춘다. */
-  function handleChartDataset(datasetId: string) {
-    const dataset = datasets.find((entry) => entry.id === datasetId)
-    if (!active || !dataset) return
-    setCharts((previous) =>
-      previous.map((chart) =>
-        chart.spec.id === active.spec.id
-          ? { ...chart, datasetId, spec: withColumns(chart.spec, dataset.columns) }
-          : chart
-      )
-    )
+  /**
+   * 선택된 카드가 볼 파일을 바꾼다. 고르는 단위는 **파일**이라, 그 파일에서 들여둔
+   * 시트 중 첫 번째로 붙는다 — 시트는 아래 줄에서 따로 고른다.
+   */
+  function handleChartFile(fileId: string) {
+    const dataset = datasets.find((entry) => entry.fileId === fileId)
+    if (active && dataset) bindChart(active.spec.id, dataset)
   }
 
   /**
@@ -211,17 +269,10 @@ function App() {
             chartNumber={active ? charts.indexOf(active) + 1 : 0}
             onColumnTypeChange={handleColumnType}
             onChartChange={handleChartChange}
-            onChartDataset={handleChartDataset}
+            onChartFile={handleChartFile}
+            onChartSheet={handleChartSheet}
             onDeriveGap={handleDeriveGap}
-            onSheetChange={(datasetId, sheet) => reopen(datasetId, { sheet })}
-            onHeaderRowChange={(datasetId, headerRow) =>
-              reopen(datasetId, {
-                // 시트를 유지한 채 헤더 행만 바꾼다. 그 파일이 지금 읽고 있는 시트여야 한다.
-                sheet:
-                  datasets.find((entry) => entry.id === datasetId)?.data.sheet ?? undefined,
-                headerRow,
-              })
-            }
+            onHeaderRowChange={handleHeaderRow}
             onCloseDataset={handleCloseDataset}
             onFile={(file) => loadFile(file, {})}
           />

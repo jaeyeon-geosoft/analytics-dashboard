@@ -6,7 +6,12 @@ import { Button } from "@/shared/components/ui/button"
 import { Skeleton } from "@/shared/components/ui/skeleton"
 import { FileDropzone } from "@/admin/components/file-dropzone"
 import { ChartCard } from "@/shared/components/chart-card"
-import type { AdminChart, AdminDataset, OpenState } from "@/admin/lib/canvas-state"
+import {
+  datasetLabel,
+  type AdminChart,
+  type AdminDataset,
+  type OpenState,
+} from "@/admin/lib/canvas-state"
 import { MAX_CHARTS } from "@/shared/lib/chart-spec"
 import { syncLayout } from "@/admin/lib/chart-layout"
 import { GRID_COLS, GRID_MARGIN, GRID_ROW_HEIGHT } from "@/shared/lib/dashboard"
@@ -239,8 +244,10 @@ function DatasetBar({
         `${dataset.data.errorCount.toLocaleString()}개 행이 헤더와 모양이 달랐습니다.`,
     ]
       .filter((note): note is string => typeof note === "string")
-      .map((note) => (single ? note : `${dataset.name}: ${note}`))
+      .map((note) => (single ? note : `${datasetLabel(dataset)}: ${note}`))
   )
+  // 같은 파일의 다른 시트끼리는 이름이 같다. 시트까지 적어야 둘로 보인다.
+  const names = datasets.map(datasetLabel).join(" · ")
 
   const full = count >= MAX_CHARTS
   const rows = datasets.reduce((total, dataset) => total + dataset.data.rows.length, 0)
@@ -248,13 +255,13 @@ function DatasetBar({
   return (
     <div className="flex shrink-0 items-start gap-4 rounded-2xl border border-border bg-card px-5 py-3.5">
       <div className="min-w-0 flex-1">
-        <p className="truncate font-mono text-sm" title={datasets.map((d) => d.name).join(" · ")}>
-          {single ? datasets[0].name : `파일 ${datasets.length}개`}
+        <p className="truncate font-mono text-sm" title={names}>
+          {single ? datasetLabel(datasets[0]) : `파일 ${datasets.length}개`}
         </p>
         <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
           {single
             ? `${rows.toLocaleString()}행 · ${datasets[0].data.columns.length}개 컬럼`
-            : `${rows.toLocaleString()}행 · ${datasets.map((d) => d.name).join(" · ")}`}
+            : `${rows.toLocaleString()}행 · ${names}`}
         </p>
         {reading && (
           <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">

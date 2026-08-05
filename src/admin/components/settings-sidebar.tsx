@@ -27,7 +27,7 @@ import {
   type Aggregation,
   type Reference,
 } from "@/shared/lib/aggregate"
-import type { AdminChart, AdminDataset } from "@/admin/lib/canvas-state"
+import { datasetLabel, type AdminChart, type AdminDataset } from "@/admin/lib/canvas-state"
 import { withChartType, withMapping, type ChartSpec } from "@/shared/lib/chart-spec"
 import type { ChartType } from "@/shared/lib/chart-types"
 import { canDeriveGap, gapColumnName } from "@/admin/lib/derive-column"
@@ -306,7 +306,6 @@ function FileRow({
   currentChartId,
   onColumnTypeChange,
   onDeriveGap,
-  onSheetChange,
   onHeaderRowChange,
   onClose,
 }: {
@@ -316,7 +315,6 @@ function FileRow({
   currentChartId?: string
   onColumnTypeChange: (datasetId: string, name: string, type: ColumnType) => void
   onDeriveGap: (datasetId: string, name: string) => void
-  onSheetChange: (datasetId: string, name: string) => void
   onHeaderRowChange: (datasetId: string, row: number) => void
   onClose: () => void
 }) {
@@ -336,10 +334,11 @@ function FileRow({
       .map((column) => column.name)
   )
 
+  const label = datasetLabel(dataset)
   const closeLabel =
     users.length > 0
-      ? `${dataset.name} 닫기 — 차트 ${users.map((user) => user.number).join(", ")}도 함께 사라집니다`
-      : `${dataset.name} 닫기`
+      ? `${label} 닫기 — 차트 ${users.map((user) => user.number).join(", ")}도 함께 사라집니다`
+      : `${label} 닫기`
 
   return (
     <AccordionItem value={dataset.id} className="relative">
@@ -350,8 +349,8 @@ function FileRow({
       */}
       <AccordionTrigger className="gap-2 px-4 py-3 pr-10 hover:no-underline">
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-xs" title={dataset.name}>
-            {dataset.name}
+          <span className="block truncate font-mono text-xs" title={label}>
+            {label}
           </span>
           <span className="mt-1 flex items-center gap-1.5">
             <span className="min-w-0 truncate font-mono text-[11px] font-normal text-muted-foreground">
@@ -426,33 +425,11 @@ function FileRow({
           </div>
         )}
 
-        {/* 시트가 하나뿐이면 고를 게 없다. */}
-        {data.sheets.length > 1 && (
-          <div className={ROW}>
-            <Label htmlFor={`sheet-${dataset.id}`} className="text-xs text-muted-foreground">
-              시트
-            </Label>
-            <Select
-              value={data.sheet ?? undefined}
-              onValueChange={(next) => onSheetChange(dataset.id, next)}
-            >
-              <SelectTrigger
-                id={`sheet-${dataset.id}`}
-                size="sm"
-                className="w-full min-w-0 font-mono text-xs"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {data.sheets.map((name) => (
-                  <SelectItem key={name} value={name} className="font-mono text-xs">
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {/*
+          시트 선택은 여기 없다 — **카드 설정 쪽**에 있다. 시트가 다르면 컬럼도 행도
+          다른 다른 표라서, 파일 자리에서 바꾸면 같은 파일을 보던 다른 카드까지 함께
+          끌려간다(실제로 그랬다). 여기 남은 것은 이 표를 어떻게 읽을지(헤더 행)뿐이다.
+        */}
 
         {columns.length > 0 && (
           <div>
@@ -513,46 +490,84 @@ function ChartSettings({
   chart,
   columns,
   datasets,
-  datasetId,
+  dataset,
   onChartChange,
-  onDatasetChange,
+  onFileChange,
+  onSheetChange,
 }: {
   chart: ChartSpec
   columns: ColumnInfo[]
-  /** 고를 수 있는 파일들. 하나뿐이면 고를 것이 없어 이 줄을 내놓지 않는다. */
+  /** 열어둔 데이터셋 전부. 파일 선택은 여기서 **파일 단위로 묶어** 만든다. */
   datasets: AdminDataset[]
-  datasetId: string
+  /** 이 카드가 보고 있는 것 */
+  dataset: AdminDataset
   onChartChange: (next: ChartSpec) => void
-  onDatasetChange: (datasetId: string) => void
+  onFileChange: (fileId: string) => void
+  onSheetChange: (sheet: string) => void
 }) {
   const { chartType, mapping, aggregation, reference } = chart
 
+  // 파일 단위로 접는다 — 같은 파일의 시트 둘은 데이터셋이 둘이지만 파일은 하나다.
+  const files = datasets.filter(
+    (entry, index) => datasets.findIndex((other) => other.fileId === entry.fileId) === index
+  )
+  const sheets = dataset.data.sheets
+
   return (
     <>
-      {/* 시트 선택과 같은 규칙 — 고를 것이 둘 이상일 때만 내놓는다. */}
-      {datasets.length > 1 && (
-        <section>
-          <div className={ROW}>
-            <Label htmlFor="chart-dataset" className="text-xs text-muted-foreground">
-              파일
-            </Label>
-            <Select value={datasetId} onValueChange={onDatasetChange}>
-              <SelectTrigger
-                id="chart-dataset"
-                size="sm"
-                className="w-full min-w-0 font-mono text-xs"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {datasets.map((dataset) => (
-                  <SelectItem key={dataset.id} value={dataset.id} className="font-mono text-xs">
-                    {dataset.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      {/* 고를 것이 둘 이상일 때만 내놓는다 — 시트도 같은 규칙이다. */}
+      {(files.length > 1 || sheets.length > 1) && (
+        <section className="space-y-2">
+          {files.length > 1 && (
+            <div className={ROW}>
+              <Label htmlFor="chart-file" className="text-xs text-muted-foreground">
+                파일
+              </Label>
+              <Select value={dataset.fileId} onValueChange={onFileChange}>
+                <SelectTrigger id="chart-file" size="sm" className="w-full min-w-0 font-mono text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {files.map((entry) => (
+                    <SelectItem
+                      key={entry.fileId}
+                      value={entry.fileId}
+                      className="font-mono text-xs"
+                    >
+                      {entry.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {/*
+            시트는 **카드마다** 고른다. 파일 쪽에 두면 같은 파일을 보는 카드가 전부 함께
+            바뀐다 — 시트가 다르면 컬럼도 행도 다른 다른 표인데도 그랬다.
+          */}
+          {sheets.length > 1 && (
+            <div className={ROW}>
+              <Label htmlFor="chart-sheet" className="text-xs text-muted-foreground">
+                시트
+              </Label>
+              <Select value={dataset.data.sheet ?? undefined} onValueChange={onSheetChange}>
+                <SelectTrigger
+                  id="chart-sheet"
+                  size="sm"
+                  className="w-full min-w-0 font-mono text-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {sheets.map((name) => (
+                    <SelectItem key={name} value={name} className="font-mono text-xs">
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </section>
       )}
 
@@ -609,8 +624,8 @@ export function SettingsSidebar({
   chartNumber,
   onColumnTypeChange,
   onChartChange,
-  onChartDataset,
-  onSheetChange,
+  onChartFile,
+  onChartSheet,
   onHeaderRowChange,
   onDeriveGap,
   onCloseDataset,
@@ -629,8 +644,8 @@ export function SettingsSidebar({
   chartNumber: number
   onColumnTypeChange: (datasetId: string, name: string, type: ColumnType) => void
   onChartChange: (next: ChartSpec) => void
-  onChartDataset: (datasetId: string) => void
-  onSheetChange: (datasetId: string, name: string) => void
+  onChartFile: (fileId: string) => void
+  onChartSheet: (sheet: string) => void
   onHeaderRowChange: (datasetId: string, row: number) => void
   onDeriveGap: (datasetId: string, name: string) => void
   onCloseDataset: (datasetId: string) => void
@@ -695,7 +710,6 @@ export function SettingsSidebar({
                     currentChartId={chart?.spec.id}
                     onColumnTypeChange={onColumnTypeChange}
                     onDeriveGap={onDeriveGap}
-                    onSheetChange={onSheetChange}
                     onHeaderRowChange={onHeaderRowChange}
                     onClose={() => onCloseDataset(entry.id)}
                   />
@@ -727,14 +741,15 @@ export function SettingsSidebar({
             </div>
           )}
 
-          {chart && (
+          {chart && dataset && (
             <ChartSettings
               chart={chart.spec}
               columns={columns}
               datasets={datasets}
-              datasetId={chart.datasetId}
+              dataset={dataset}
               onChartChange={onChartChange}
-              onDatasetChange={onChartDataset}
+              onFileChange={onChartFile}
+              onSheetChange={onChartSheet}
             />
           )}
         </div>
