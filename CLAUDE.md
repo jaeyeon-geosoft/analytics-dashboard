@@ -47,9 +47,9 @@ src/
 - **`shared/`는 `admin/`·`viewer/` 어느 쪽도 import하지 않는다.** 방향이 거꾸로다. eslint가 막는다.
 - **`admin/`과 `viewer/`는 서로 import하지 않는다.** 양쪽이 필요하면 `shared/`로 올린다.
 - **Vite `root`가 앱 폴더다**(`src/admin` / `src/viewer`). 진입 HTML은 자기 앱 폴더 안에 `index.html`로 있고 `./main.tsx`를 가리킨다. dev 서버가 **그 앱 하나만** 연다 — 어드민 서버에서 뷰어는 안 보인다. 포트는 5173(어드민) / 5174(뷰어)로 못 박혀 있다(`strictPort`).
-- 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(확인함: 830KB+493KB → 190KB).
+- 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(2026-08-05 확인: 어드민 911KB + xlsx 493KB → 뷰어 734KB). **차이가 크지 않은 것은 Recharts가 양쪽을 다 차지하기 때문이다** — 갈라놓는 값어치는 크기보다 "뷰어에 파서가 아예 없다"는 데 있다.
 - **`src/shared/index.css`의 `@source "../shared"`를 지우지 말 것.** Tailwind는 Vite의 `root`만 자동 스캔하는데 `shared/`가 그 바깥이라, 빼면 shared에만 있는 클래스가 빌드 CSS에서 통째로 빠진다 — 실제로 `h-7`·`border-separate`가 빠져 표가 깨졌다. 앱 폴더를 더 만들면 여기도 같이 볼 것.
-- CSS도 앱별로 갈린다(어드민 59KB / 뷰어 53KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다.
+- CSS도 앱별로 갈린다(어드민 66KB / 뷰어 56KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다.
 - **`cacheDir`도 앱별로 갈라놨다. 지우지 말 것.** 기본값이면 둘 다 루트의 `node_modules/.vite`를 쓰는데, 설정이 서로 달라서 한쪽을 띄울 때마다 다른 쪽 캐시를 지우고 다시 만든다. 그러면 켜둔 탭이 들고 있던 `?v=` 해시가 사라져 **동적 import가 404로 죽는다** — 실제로 엑셀을 열 때 `Failed to fetch dynamically imported module: …/deps/xlsx.js?v=…`로 터졌다. SheetJS만 터지는 건 그것만 동적 import라 파일을 여는 순간 받아오기 때문이다(CSV는 papaparse가 정적이라 멀쩡하다).
 - `apps/*` + `packages/*` + workspace로 가는 것은 **뷰어 전용 의존성이 생기거나, 세 번째 앱이 생기거나, 빌드 시간이 아파질 때.** 그때 `src/shared/`를 통째로 옮기면 되므로 미리 하지 않는다.
 
@@ -184,7 +184,7 @@ npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 - **확장자만 보고 텍스트로 읽지 말 것.** xlsx/xls를 papaparse에 넘기면 에러 없이 그럴듯한 가짜 컬럼과 행이 나온다 — 실제로 랜덤 바이너리에서 "15행 2컬럼"이 나왔다.
 - **헤더가 1행이라고 단정하지 말 것.** 제목 줄이 위에 붙은 리포트성 파일이 흔하다. CSV·Excel 모두 행 배열로 읽은 뒤 `shape()`에서 헤더 행을 고른다.
 - **빈 줄을 파서 단계에서 지우지 말 것.** 지우면 "헤더 행" 번호가 사용자가 파일에서 세는 줄 번호와 어긋난다. 대신 papaparse의 구분자 추측이 빈 줄 하나에도 깨지므로(TSV가 1컬럼이 된다) `guessDelimiter`로 먼저 정해서 넘겨야 한다.
-- 컬럼 타입(숫자/날짜/범주) 추론은 실패할 수 있다. 추론 결과를 사용자가 고칠 수 있게 만들 것 — 조용히 잘못 추론하는 것이 최악이다. 구현은 `src/shared/lib/infer-types.ts`, UI는 사이드바 "컬럼" 섹션.
+- 컬럼 타입(숫자/날짜/범주) 추론은 실패할 수 있다. 추론 결과를 사용자가 고칠 수 있게 만들 것 — 조용히 잘못 추론하는 것이 최악이다. 구현은 `src/shared/lib/infer-types.ts`, UI는 사이드바 파일 목록을 펼쳤을 때 나오는 "컬럼" 목록.
 - **타입은 3종(숫자/날짜/범주)에서 늘리지 말 것.** 포맷 추측 엔진을 만들 자리가 아니다. 애매하면 범주로 두고 사용자가 고치게 한다.
 - **날짜 판정에 `new Date()`를 쓰지 말 것.** `new Date("1")`도 통과하고 브라우저마다 해석이 다르다. 알아볼 수 있는 패턴만 매칭하고 연·월·일 범위까지 확인할 것.
 - **선행 0이 붙은 정수는 숫자가 아니라 범주로 본다.** 우편번호·사번·전화번호이고, 숫자로 바꾸면 0이 날아가 원본을 잃는다.
