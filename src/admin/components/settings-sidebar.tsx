@@ -341,6 +341,8 @@ function FileRow({
   )
 
   const label = datasetLabel(dataset)
+  // 시트가 하나뿐이면 이름에 안 붙는다 — `datasetLabel`과 같은 기준을 쓴다.
+  const sheetName = data.sheets.length > 1 ? data.sheet : undefined
   const closeLabel =
     users.length > 0
       ? `${label} 닫기 — 차트 ${users.map((user) => user.number).join(", ")}도 함께 사라집니다`
@@ -352,11 +354,30 @@ function FileRow({
         `pr-10`은 셰브론이 설 자리다. 셰브론은 트리거 콘텐츠의 끝(오른쪽에서 40~56px)에
         서고 닫기 버튼은 그 바깥(12~28px)에 선다 — 둘을 눈대중으로 두면 겹쳐서 어느 쪽을
         눌렀는지 모르게 된다.
+
+        **`min-w-0`이 없으면 안쪽의 `truncate`가 통째로 무력해진다.** flex 아이템은
+        기본이 `min-width: auto`라 긴 파일명의 최소 너비(371px)만큼 버티고, 사이드바
+        (253px)를 넘어선 만큼이 잘려 나가면서 셰브론과 닫기 버튼이 화면 밖으로 밀린다 —
+        실제로 `AIS_VDM_Graph_Analysis_…`에서 ✕가 사라졌다.
       */}
-      <AccordionTrigger className="gap-2 px-4 py-3 pr-10 hover:no-underline">
+      <AccordionTrigger className="min-w-0 gap-2 px-4 py-3 pr-10 hover:no-underline">
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-xs" title={label}>
-            {label}
+          {/*
+            **시트 이름은 자르지 않는다.** 같은 파일의 시트 둘은 이름이 앞부분까지 똑같아서
+            통째로 자르면 두 줄이 `AIS_VDM_Graph_Analysi…`로 같아진다 — 눈금 라벨에서
+            공통 앞부분을 떼는 것과 같은 이유다(구분되는 정보가 뒤에 있다). 파일명만
+            줄이고 시트는 끝에 붙여둔다.
+          */}
+          <span className="flex min-w-0 items-baseline font-mono text-xs" title={label}>
+            <span className="truncate">{dataset.name}</span>
+            {sheetName && (
+              // 시트 이름도 길 수 있다. 자르지 않으면 파일명을 0까지 밀어낸다 —
+              // 줄의 절반까지만 쓰게 두고 그 안에서 자른다.
+              <span className="flex max-w-[55%] shrink-0 text-muted-foreground">
+                <span className="px-1">›</span>
+                <span className="truncate">{sheetName}</span>
+              </span>
+            )}
           </span>
           <span className="mt-1 flex items-center gap-1.5">
             <span className="min-w-0 truncate font-mono text-[11px] font-normal text-muted-foreground">
