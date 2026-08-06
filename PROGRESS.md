@@ -155,7 +155,7 @@
 
 **양쪽 다 `react-grid-layout`을 같은 컴포넌트로 쓴다**(`shared/components/chart-grid.tsx`).
 뷰어에서도 카드를 옮길 수 있게 되면서 규격을 두 벌 둘 이유가 없어졌다 — 예전에는 뷰어만
-CSS Grid로 따로 그렸다. 칸 규격은 `shared/lib/dashboard.ts`에 있다:
+CSS Grid로 따로 그렸다. 칸 규격은 `shared/lib/dashboard/`에 있다:
 `GRID_COLS`(12) · `GRID_ROW_HEIGHT`(40px) · `GRID_MARGIN`(12px) · `GRID_MIN_W`(3) ·
 `GRID_MIN_H`(7). 한쪽만 바꾸면 같은 대시보드가 두 화면에서 다르게 배치된다.
 
@@ -186,7 +186,7 @@ CSS Grid로 따로 그렸다. 칸 규격은 `shared/lib/dashboard.ts`에 있다:
 → [lessons: 배치](docs/lessons.md#배치)
 
 **도메인 타입은 `lib/`에 둔다.** `ChartType`·`AdminDataset`·`AdminChart`가 컴포넌트 파일에
-있으면 `lib/aggregate.ts`가 `components/`를 import하게 된다 — 방향이 거꾸로다.
+있으면 `lib/aggregate/`가 `components/`를 import하게 된다 — 방향이 거꾸로다.
 
 **`src/`는 `shared/` · `admin/` · `viewer/` 셋으로 갈려 있다**(규칙은 [CLAUDE.md](CLAUDE.md#레포-구조),
 eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `root`가 앱 폴더라
@@ -195,40 +195,45 @@ eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `ro
 
 | 파일 | 역할 |
 |---|---|
-| `src/admin/App.tsx` | 상태 보유(`AdminDataset[]`, `AdminChart[]`, **배치 `Layout`**, 여는 중 상태, 선택 카드), 파일·내보내기 핸들러 |
+| `src/admin/App.tsx` | 화면 배치만 — 헤더 · 사이드바 · 캔버스를 잇는다 |
+| `src/admin/hooks/use-admin-workspace.ts` | **어드민 상태 기계.** 상태 보유(`AdminDataset[]`, `AdminChart[]`, **배치 `Layout`**, 여는 중 상태, 선택 카드) + 파일 읽기 세 갈래(`open`/`reread`/`bind`) + 도메인 핸들러 |
 | `src/admin/components/app-header.tsx` | 워드마크, 파일 열기, 테마 토글 |
-| `src/admin/components/settings-sidebar.tsx` | 파일 목록 아코디언(표마다 헤더 행·컬럼) / **선택된 카드**의 파일·시트·차트 종류·매핑·집계·정렬·기준선 |
-| `src/admin/components/chart-type-picker.tsx` | 8종 피커(막대/가로 막대/누적 막대/선/영역/산점도/궤적/원형), 4열 2줄 + 직접 그린 마크 글리프 |
+| `src/admin/components/settings-sidebar/` | 파일 목록 아코디언(표마다 헤더 행·컬럼) / **선택된 카드**의 파일·시트·차트 종류·매핑·집계·정렬·기준선 |
+| `src/admin/components/chart-type-picker/` | 8종 피커(막대/가로 막대/누적 막대/선/영역/산점도/궤적/원형), 4열 2줄 + 직접 그린 마크 글리프 |
 | `src/shared/lib/chart-types.ts` | `ChartType` 8종. 도메인 타입이라 피커가 아니라 여기 있다 |
 | `src/shared/lib/dataset.ts` | `DataFrame`(`columns`+`rows`) — 렌더러가 먹는 최소 형태. 어드민의 `ParsedFile`이 그대로 대입되고, 뷰어는 API 응답에서 이 모양만 만들면 된다 |
-| `src/admin/lib/canvas-state.ts` | 어드민 상태 모델 — `AdminDataset`(**표 하나** = 파일+시트: 원본 참조·파싱 결과·그 표의 컬럼, 같은 파일은 `fileId` 공유), `AdminChart`(`{spec, datasetId}`), `OpenState`(파일을 읽는 동안만), `datasetLabel()` |
-| `src/shared/lib/chart-spec.ts` | `ChartSpec`(종류·매핑·집계·정렬·기준선 — `order`는 optional, 없으면 파일 순서), `createChart()`·`duplicateChart()`, **명세를 고치는 규칙**(`withChartType`·`withColumns`·`withMapping`), 상한 `MAX_CHARTS` |
-| `src/admin/components/chart-canvas.tsx` | 캔버스 4개 상태 + `DatasetBar` + `CanvasGrid`(카드↔배치 맞추기) |
-| `src/shared/components/chart-card.tsx` | 카드 한 장 — 계산 지연(`useDeferredPlot`), 차트↔표 토글, 카드 단위 경고(값 라벨이 접혔다는 알림도 여기) |
+| `src/admin/lib/canvas-state/` | 어드민 상태 모델 — `AdminDataset`(**표 하나** = 파일+시트: 원본 참조·파싱 결과·그 표의 컬럼, 같은 파일은 `fileId` 공유), `AdminChart`(`{spec, datasetId}`), `OpenState`(파일을 읽는 동안만), `datasetLabel()` |
+| `src/shared/lib/chart-spec/` | `ChartSpec`(종류·매핑·집계·정렬·기준선 — `order`는 optional, 없으면 파일 순서), `createChart()`·`duplicateChart()`, **명세를 고치는 규칙**(`withChartType`·`withColumns`·`withMapping`), 상한 `MAX_CHARTS` |
+| `src/admin/components/chart-canvas/` | 캔버스 4개 상태 + `DatasetBar` + `CanvasGrid`(카드↔배치 맞추기) |
+| `src/shared/components/chart-card/` | 카드 한 장 — 계산 지연(`useDeferredPlot`), 차트↔표 토글, 카드 단위 경고(값 라벨이 접혔다는 알림도 여기) |
 | `src/admin/components/file-dropzone.tsx` | 드래그&드롭 + 파일 선택 |
 | `src/shared/components/theme-toggle.tsx` | 라이트/다크 (`localStorage`, 데이터 아님) |
 | `src/admin/lib/file-constraints.ts` | 확장자 목록, 크기 상한(50MB), `validateFile()` |
 | `src/admin/components/column-list.tsx` | 컬럼별 타입 배지 + 덮어쓰기, 불확실 경고, 시차 컬럼 만들기(⏱) |
-| `src/admin/lib/parse-file.ts` | 인코딩 감지, CSV(papaparse)·Excel(SheetJS) 파싱, 헤더 행, 행 상한(10만) |
-| `src/shared/lib/infer-types.ts` | 컬럼 타입 추론 (숫자/날짜/범주 + 신뢰도 + 고유값 수) + `columnWarning()` — 추론을 왜 못 미더워하는지. 컬럼 목록과 파일 줄의 ⚠가 **같은 기준으로** 세야 해서 여기 있다 |
-| `src/shared/lib/mapping-slots.ts` | 슬롯 정의, 후보 필터, 자동 채움, 무효 선택 정리, 슬롯 잠금 |
-| `src/shared/lib/aggregate.ts` | 집계(합계/평균/개수) + 차트가 먹을 모양으로 변환. 진입점은 `buildPlot()` 하나 |
-| `src/admin/lib/derive-column.ts` | 직전 행과의 시차(초) 컬럼 만들기. **파생 값은 여기 하나뿐** |
-| `src/shared/components/chart-view.tsx` | Recharts 렌더러 — `TimelineView`(선·영역) / `BarView`(막대 3종) / `PieView` / `ScatterView`. 값 축 범위(`valueDomain`)·눈금 자릿수(`compact`)·막대 값 라벨 접기(`everyBar`)·축 이름(`AxisFrame`, 플롯 위 가로)도 여기 |
-| `src/shared/components/data-table.tsx` | 차트와 같은 집계 결과의 표 보기 (보이는 행만 그린다) |
-| `src/shared/lib/dashboard.ts` | **계약.** `Dashboard` 타입, `parseDashboard()` 검증기, 그리드 규격 상수 |
-| `src/admin/lib/export-dashboard.ts` | 지금 어드민 상태 → `Dashboard` → JSON 다운로드. 어느 카드도 안 보는 파일은 담지 않는다. **나중에 여기가 POST** |
-| `src/admin/lib/chart-layout.ts` | 새 카드의 기본 칸(1장이면 전체 폭), 하한(`minW`/`minH`), 카드↔배치 맞추기(`syncLayout`) |
+| `src/admin/lib/parse-file/` | 인코딩 감지, CSV(papaparse)·Excel(SheetJS) 파싱, 헤더 행, 행 상한(10만) |
+| `src/shared/lib/infer-types/` | 컬럼 타입 추론 (숫자/날짜/범주 + 신뢰도 + 고유값 수) + `columnWarning()` — 추론을 왜 못 미더워하는지. 컬럼 목록과 파일 줄의 ⚠가 **같은 기준으로** 세야 해서 여기 있다 |
+| `src/shared/lib/mapping-slots/` | 슬롯 정의, 후보 필터, 자동 채움, 무효 선택 정리, 슬롯 잠금 |
+| `src/shared/lib/aggregate/` | 집계(합계/평균/개수) + 차트가 먹을 모양으로 변환. 진입점은 `buildPlot()` 하나 |
+| `src/admin/lib/derive-column/` | 직전 행과의 시차(초) 컬럼 만들기. **파생 값은 여기 하나뿐** |
+| `src/shared/components/chart-view/` | Recharts 렌더러 — `timeline-view`(선·영역) / `bar-view`(막대 3종) / `pie-view` / `scatter-view` + `axis-frame`(축 이름, 플롯 위 가로) · `bar-labels`(`everyBar`) · `hooks/{use-plot-window,use-tick-interval,use-category-axis}` |
+| `src/shared/lib/{chart-colors,number-format,axis-domain,axis-labels}.ts` | 렌더러가 쓰는 순수 규칙 — 색 슬롯 배정 · 눈금 자릿수(`compact`) · 값 축 범위(`valueDomain`) · 눈금 공통 앞부분(`sharedPrefix`) |
+| `src/shared/lib/{chart-options,chart-option-labels}.ts` | 집계·기준선·정렬의 **타입**과 **화면 이름**. 명세가 들고 다니는 값이라 계산 모듈이 아니라 여기 |
+| `src/shared/components/{card-badge,file-picker-button}.tsx` | 두 화면에 되풀이되던 것 — 카드 번호 배지, 숨은 `<input type=file>` |
+| `src/shared/components/data-table/` | 차트와 같은 집계 결과의 표 보기 (보이는 행만 그린다) |
+| `src/shared/lib/dashboard/` | **계약.** `Dashboard` 타입, `parseDashboard()` 검증기, 그리드 규격 상수 |
+| `src/admin/lib/export-dashboard/` | 지금 어드민 상태 → `Dashboard` → JSON 다운로드. 어느 카드도 안 보는 파일은 담지 않는다. **나중에 여기가 POST** |
+| `src/admin/lib/chart-layout/` | 새 카드의 기본 칸(1장이면 전체 폭), 하한(`minW`/`minH`), 카드↔배치 맞추기(`syncLayout`) |
 | `src/shared/grid.css` | rgl 기본 CSS 덮어쓰기 (자리표시·크기 손잡이). 양쪽 `main.tsx`가 불러온다 |
 | `src/shared/components/chart-grid.tsx` | 격자 — 칸 규격과 끌기 규칙. **양쪽이 쓴다**, 뷰어만 `locked` |
-| `src/viewer/viewer-app.tsx` | 뷰어 화면 — 빈 상태 / 실패 이유 / 대시보드. 지금 배치와 잠금을 든다 |
-| `src/viewer/load-dashboard.ts` | 대시보드를 가져오는 **유일한 자리**. **나중에 여기가 fetch** |
+| `src/viewer/viewer-app.tsx` | 뷰어 화면 배치 — 헤더 / 잠금 해제 안내 / 빈 상태 / 격자 |
+| `src/viewer/hooks/use-dashboard-view.ts` | 뷰어 상태 — 연 대시보드 · 실패 이유 · 지금 배치 · 잠금. **배치는 어디에도 저장하지 않는다** |
+| `src/viewer/lib/load-dashboard.ts` | 대시보드를 가져오는 **유일한 자리**. **나중에 여기가 fetch** |
 | `src/viewer/components/dashboard-grid.tsx` | 받은 대시보드를 격자에 올린다 |
-| `src/viewer/view-layout.ts` | 저장된 배치 → 격자 모양(`layoutFrom`), 달라졌는지(`isMoved`) |
+| `src/viewer/lib/{layout-from,is-moved}.ts` | 저장된 배치 → 격자 모양(`layoutFrom`), 달라졌는지(`isMoved`) |
 
 ## 대시보드 계약
 
-어드민이 만들고 뷰어가 그리는 것. 정의와 검증기는 `src/shared/lib/dashboard.ts`.
+어드민이 만들고 뷰어가 그리는 것. 정의와 검증기는 `src/shared/lib/dashboard/`.
 **지금은 JSON 파일로 오가지만 API가 붙으면 그대로 응답 본문이 된다** — 백엔드에 넘길
 스펙 문서이기도 하다.
 
@@ -314,7 +319,7 @@ CSV든 Excel이든 **행 배열(`string[][]`)로 읽은 뒤 `shape()`가 헤더�
 ### 파생 컬럼 — 시차 하나뿐
 
 시각이 든 날짜 컬럼 옆에 ⏱ 버튼이 붙고, 누르면 `"<컬럼> 시차(초)"` 숫자 컬럼이 생긴다
-(`src/admin/lib/derive-column.ts`). 기준은 **파일에 적힌 직전 행**이다 — 로그는 이미 시간 순으로
+(`src/admin/lib/derive-column/`). 기준은 **파일에 적힌 직전 행**이다 — 로그는 이미 시간 순으로
 쌓여 있어서 여기서 다시 정렬하면 원본에 없던 순서를 지어내게 된다. 첫 행은 빈 칸.
 
 장비 로그의 "규칙적으로 쏘고 있나"는 값이 아니라 행과 행 **사이**에 있는데 그 수가 파일
@@ -327,7 +332,7 @@ CSV든 Excel이든 **행 배열(`string[][]`)로 읽은 뒤 `shape()`가 헤더�
 
 ## 차트 렌더링
 
-집계는 `aggregate.ts`가 맡고, **진입점은 `buildPlot()` 하나다.** 차트 종류를 보고 어느
+집계는 `aggregate/`가 맡고, **진입점은 `buildPlot()` 하나다.** 차트 종류를 보고 어느
 프레임을 만들지 정하는 곳이 여기뿐이라, 결과는 `PlotData`(`kind: "cartesian" | "scatter"`)로
 갈라져 나온다 — 읽는 쪽이 종류를 다시 물어 어느 프레임이 찼는지 맞출 필요가 없다.
 
@@ -401,7 +406,7 @@ CSV든 Excel이든 **행 배열(`string[][]`)로 읽은 뒤 `shape()`가 헤더�
 ## 차트 종류별 매핑 슬롯
 
 사이드바의 "매핑" 섹션은 선택된 차트 종류에 따라 라벨과 슬롯 개수가 바뀐다.
-정의는 `src/shared/lib/mapping-slots.ts`의 `MAPPING_SLOTS`에 있다.
+정의는 `src/shared/lib/mapping-slots/`의 `MAPPING_SLOTS`에 있다.
 
 | 종류 | 슬롯 |
 |---|---|
@@ -440,7 +445,7 @@ CSV든 Excel이든 **행 배열(`string[][]`)로 읽은 뒤 `shape()`가 헤더�
   파일은 기존 카드의 `파일` 선택으로 볼 수 있고, 배지가 없는 것이 "아무 카드도 안 씀"의
   표시다. 써보고 답답하면 상한을 올리거나 안내를 더한다.
 - **뷰어가 API에서 받는 것** — ⓐ 스펙 + 원본 행을 받아 뷰어가 `buildPlot()`을 직접 돌릴지,
-  ⓑ 서버가 집계한 결과를 받을지. **ⓐ를 권한다** — 집계 규칙이 `aggregate.ts` 한 곳에만
+  ⓑ 서버가 집계한 결과를 받을지. **ⓐ를 권한다** — 집계 규칙이 `aggregate/` 한 곳에만
   남는다. ⓑ면 서버가 정렬 규칙·`downsample`·분할 8개 상한·원형 "기타" 접기를 다시 구현해야
   하고, 어긋나는 순간 어드민에서 본 차트와 뷰어 차트가 달라진다(절대 원칙 1). 페이로드가
   실제로 문제가 되면 그때 ⓑ로 옮긴다 — 그건 서버 쪽 작업이라 이 레포는 안 건드린다.
