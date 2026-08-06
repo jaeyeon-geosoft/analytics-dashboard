@@ -1,6 +1,7 @@
 import { ChartTypePicker } from "@/admin/components/chart-type-picker"
 import { ChoiceRow } from "@/admin/components/settings-sidebar/choice-row"
 import { MappingGuide } from "@/admin/components/settings-sidebar/mapping-guide"
+import { MappingMultiSelect } from "@/admin/components/settings-sidebar/mapping-multi-select"
 import { MappingSelect } from "@/admin/components/settings-sidebar/mapping-select"
 import { SectionLabel } from "@/admin/components/settings-sidebar/section-label"
 import { SourceSelect } from "@/admin/components/settings-sidebar/source-select"
@@ -23,7 +24,9 @@ import {
   allowsCategoryOrder,
   allowsReference,
   lockedReason,
+  pickedColumns,
   usesAggregation,
+  valueColumnLimit,
 } from "@/shared/lib/mapping-slots"
 
 /**
@@ -72,16 +75,31 @@ export function ChartSettings({
           매핑
         </SectionLabel>
         <div className="space-y-2">
-          {MAPPING_SLOTS[chartType].map((slot) => (
-            <MappingSelect
-              key={slot.key}
-              slot={slot}
-              columns={columns}
-              value={mapping[slot.key]}
-              locked={lockedReason(slot, chartType, mapping, aggregation === "count")}
-              onValueChange={(column) => onChartChange(withMapping(chart, slot.key, column))}
-            />
-          ))}
+          {MAPPING_SLOTS[chartType].map((slot) =>
+            // 여럿 고르는 슬롯은 드롭다운이 아니라 펼친 목록이다. 고르는 것이 "하나"가
+            // 아니라 "어느 것들"이라 닫힌 트리거로는 무엇이 켜져 있는지 안 보인다.
+            slot.multiple ? (
+              <MappingMultiSelect
+                key={slot.key}
+                slot={slot}
+                columns={columns}
+                value={pickedColumns(mapping[slot.key])}
+                max={valueColumnLimit(slot, mapping)}
+                onValueChange={(next) => onChartChange(withMapping(chart, slot.key, next))}
+              />
+            ) : (
+              <MappingSelect
+                key={slot.key}
+                slot={slot}
+                columns={columns}
+                // 하나짜리 슬롯이라도 매핑은 배열을 들고 있을 수 있다(누적 막대를
+                // 거쳐온 `값`). 이 줄이 그리는 것은 언제나 하나다.
+                value={pickedColumns(mapping[slot.key])[0]}
+                locked={lockedReason(slot, chartType, mapping, aggregation === "count")}
+                onValueChange={(column) => onChartChange(withMapping(chart, slot.key, column))}
+              />
+            )
+          )}
           {/* 산점도·궤적은 행 하나가 점 하나라 묶을 일이 없다. */}
           {usesAggregation(chartType) && (
             <ChoiceRow<Aggregation>

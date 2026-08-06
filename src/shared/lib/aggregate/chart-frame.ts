@@ -5,7 +5,9 @@ import type { ColumnInfo } from "@/shared/lib/infer-types"
 import {
   activeMapping,
   isTimeline,
+  pickedColumns,
   rightValueColumn,
+  valueColumns,
   type Mapping,
 } from "@/shared/lib/mapping-slots"
 import { collectBuckets } from "@/shared/lib/aggregate/collect-buckets"
@@ -36,20 +38,27 @@ export function buildChartFrame(
   const mapping = activeMapping(chartType, rawMapping)
   const orderedByX = isTimeline(chartType)
   const xColumn = orderedByX ? mapping.x : mapping.category
-  const valueColumn = orderedByX ? mapping.y : mapping.value
+  /*
+    값 컬럼이 여럿이면 그 컬럼 하나하나가 시리즈가 된다. 분할과는 함께 쓰지 않으므로
+    (사이드바에서도 잠긴다) 시리즈가 늘어나는 길은 언제나 한 갈래다.
+
+    누적 막대의 `값`은 층이 컬럼으로 펼쳐진 wide 모양을 그대로 받는 자리다 — 엑셀에서
+    표를 통째로 잡아 누적 막대를 만드는 것과 같다. 선의 `Y축(우)`도 컬럼 둘을 시리즈로
+    만들지만 그쪽은 축이 갈린다(`dual`).
+  */
+  const picked = orderedByX ? pickedColumns(mapping.y) : valueColumns(mapping)
+  const valueColumn = picked[0]
   if (!xColumn) return null
   if (aggregation !== "count" && !valueColumn) return null
 
-  // 값 컬럼이 둘이면 그 둘이 곧 시리즈가 된다. 분할과는 함께 쓰지 않으므로
-  // (사이드바에서도 잠긴다) 시리즈가 늘어나는 길은 언제나 한 갈래다.
   const rightColumn = rightValueColumn(chartType, mapping, aggregation === "count")
-  const valueColumns = valueColumn ? [valueColumn, ...(rightColumn ? [rightColumn] : [])] : []
-  const dual = valueColumns.length > 1
+  const columnList = valueColumn ? [...picked, ...(rightColumn ? [rightColumn] : [])] : []
+  const dual = Boolean(rightColumn)
 
-  const { buckets, seriesNames } = collectBuckets(rows, xColumn, valueColumns, mapping.series)
+  const { buckets, seriesNames } = collectBuckets(rows, xColumn, columnList, mapping.series)
   if (buckets.size === 0) return null
 
-  const resolved = resolveSeries(valueColumns, seriesNames, valueColumn)
+  const resolved = resolveSeries(columnList, seriesNames, valueColumn, dual)
   const series = toChartSeries(resolved)
 
   let entries: CategoryEntry[] = [...buckets.entries()].map(([x, bucket]) => {
@@ -111,7 +120,17 @@ export function buildChartFrame(
     sampledFrom: plotted.length < full.length ? full.length : undefined,
     series,
     xLabel: xColumn,
-    yLabel: valueColumn ? `${valueColumn} ${AGGREGATION_LABELS[aggregation]}` : COUNT_LABEL,
+    /*
+      값 컬럼이 여럿이면 축 이름은 집계 방식만 적는다. 컬럼 이름을 이어 붙이면 축
+      이름이 한 줄을 넘기는데, 어느 층이 무엇인지는 이미 범례가 컬럼 이름 그대로
+      말하고 있다. 집계 방식은 그래도 밝힌다 — 100만 행을 어떻게 줄였는지가 빠지면
+      조용히 오독한다(CLAUDE.md).
+    */
+    yLabel: !valueColumn
+      ? COUNT_LABEL
+      : picked.length > 1
+        ? AGGREGATION_LABELS[aggregation]
+        : `${valueColumn} ${AGGREGATION_LABELS[aggregation]}`,
     y2Label: rightColumn ? `${rightColumn} ${AGGREGATION_LABELS[aggregation]}` : undefined,
     folded,
     reference: stat === null ? undefined : { value: stat, label: referenceLabel(reference, stat) },

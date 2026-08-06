@@ -12,6 +12,8 @@ export {
   allowsCategoryOrder,
   lockedReason,
   rightValueColumn,
+  valueColumnLimit,
 } from "@/shared/lib/mapping-slots/rules"
+export { pickedColumns, valueColumns } from "@/shared/lib/mapping-slots/picked"
 export { candidatesFor, fillMapping, pruneMapping } from "@/shared/lib/mapping-slots/candidates"
 export type { Mapping, MappingKey, MappingSlot } from "@/shared/lib/mapping-slots/types"

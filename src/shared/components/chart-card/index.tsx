@@ -10,7 +10,7 @@ import { looksSlow } from "@/shared/components/chart-card/looks-slow"
 import { DEFAULT_CATEGORY_ORDER, type ChartSpec } from "@/shared/lib/chart-spec"
 import type { DataFrame } from "@/shared/lib/dataset"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
-import { MAPPING_SLOTS } from "@/shared/lib/mapping-slots"
+import { MAPPING_SLOTS, pickedColumns } from "@/shared/lib/mapping-slots"
 import { cn } from "@/shared/lib/utils"
 
 /**
@@ -73,7 +73,8 @@ export function ChartCard({
   if (labelsFolded) caveats.push(FOLDED_LABELS_NOTE)
 
   const missing = MAPPING_SLOTS[chartType]
-    .filter((slot) => !slot.optional && !mapping[slot.key])
+    // 빈 배열도 "안 고름"이다. `!mapping[slot.key]`로 물으면 `[]`가 참이라 통과한다.
+    .filter((slot) => !slot.optional && pickedColumns(mapping[slot.key]).length === 0)
     .map((slot) => slot.label)
 
   return (
