@@ -2,8 +2,12 @@ import { AGGREGATION_LABELS } from "@/shared/lib/chart-option-labels"
 import type { Aggregation, CategoryOrder, Reference } from "@/shared/lib/chart-options"
 import type { ChartType } from "@/shared/lib/chart-types"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
-import { isTimeline, rightValueColumn, type Mapping } from "@/shared/lib/mapping-slots"
-import { activeMapping } from "@/shared/lib/aggregate/active-mapping"
+import {
+  activeMapping,
+  isTimeline,
+  rightValueColumn,
+  type Mapping,
+} from "@/shared/lib/mapping-slots"
 import { collectBuckets } from "@/shared/lib/aggregate/collect-buckets"
 import { COUNT_LABEL } from "@/shared/lib/aggregate/constants"
 import { downsample } from "@/shared/lib/aggregate/downsample"

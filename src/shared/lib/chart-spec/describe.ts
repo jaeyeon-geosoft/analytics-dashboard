@@ -1,4 +1,4 @@
-import { MAPPING_SLOTS, rightValueColumn } from "@/shared/lib/mapping-slots"
+import { MAPPING_SLOTS, activeMapping, rightValueColumn } from "@/shared/lib/mapping-slots"
 import type { ChartSpec } from "@/shared/lib/chart-spec/types"
 
 /** 매핑을 사람이 읽는 문장으로 푼 것. 카드 머리줄과 내보내기 제목이 같은 것을 본다. */
@@ -24,17 +24,24 @@ const ASIDE_KEYS = new Set(["series", "y2"])
  */
 export function describeMapping(spec: ChartSpec): MappingDescription {
   const slots = MAPPING_SLOTS[spec.chartType]
+  /*
+    **지금 종류에 있는 슬롯만 본다.** 매핑은 종류에 없는 슬롯의 값도 들고 있어서
+    (종류를 되돌리면 살아나라고 지우지 않는다) 그대로 읽으면 딴 차트의 컬럼이 적힌다 —
+    막대(범주=지역)를 선(X축=월)으로 바꾼 카드가 부제에 "지역 기준"을 계속 달고 있었다.
+  */
+  const mapping = activeMapping(spec.chartType, spec.mapping)
+
   const axes = slots
     .filter((slot) => !ASIDE_KEYS.has(slot.key))
-    .map((slot) => spec.mapping[slot.key])
+    .map((slot) => mapping[slot.key])
     .filter(Boolean)
     .join(" → ")
 
-  const right = rightValueColumn(spec.chartType, spec.mapping, spec.aggregation === "count")
+  const right = rightValueColumn(spec.chartType, mapping, spec.aggregation === "count")
   const hasSeries = slots.some((slot) => slot.key === "series")
   const aside = [
     right && `${right}(우)`,
-    hasSeries ? spec.mapping.series : undefined,
+    hasSeries ? mapping.series : undefined,
   ].filter(Boolean)
 
   /*
@@ -47,7 +54,7 @@ export function describeMapping(spec: ChartSpec): MappingDescription {
   return {
     axes,
     aside: aside.length > 0 ? aside.join(" · ") : undefined,
-    measure: spec.mapping.value ?? spec.mapping.y,
-    by: spec.mapping.category ?? spec.mapping.x,
+    measure: mapping.value ?? mapping.y,
+    by: mapping.category ?? mapping.x,
   }
 }

@@ -1,6 +1,5 @@
 import { toNumber } from "@/shared/lib/infer-types"
-import type { Mapping } from "@/shared/lib/mapping-slots"
-import { activeMapping } from "@/shared/lib/aggregate/active-mapping"
+import { activeMapping, type Mapping } from "@/shared/lib/mapping-slots"
 import { EMPTY_SERIES_LABEL, MAX_SCATTER_POINTS } from "@/shared/lib/aggregate/constants"
 import type { ScatterFrame } from "@/shared/lib/aggregate/types"
 
