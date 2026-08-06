@@ -315,6 +315,7 @@ d 속성     4,760KB → 139KB
 | 플롯이 납작하게 눌림 | 부모가 `flex-1`(높이 auto)이면 `h-full`이 안 먹는다. `relative` + `absolute inset-0`으로 |
 | 직접 라벨이 첫 렌더에만 보임 | 마크 애니메이션이 갱신 때 라벨을 삼킨다. `isAnimationActive={false}` |
 | Y축 라벨이 눈금과 겹침 | `insideLeft` 회전 라벨. 축 이름은 `AxisFrame`이 HTML로 그린다 |
+| 세로로 세운 축 이름의 한글이 뒤집힘 | `writing-mode: vertical-rl`은 한글을 **한 자씩 세워** 쌓는다(세로쓰기). 여기에 서양식으로 `rotate(180deg)`를 걸면 라틴은 아래→위로 바로 서지만 한글은 글자마다 뒤집힌다. 값 축 이름은 세우지 말고 **플롯 위에 가로로** 놓는다 |
 | 차트가 초당 수천 번 깜빡임 | 플롯에 `overflow-*-auto`를 걸면 스크롤바 유무로 폭이 15px 진동하고 ResponsiveContainer가 무한히 재측정한다. 스크롤바는 플롯 **바깥**에 |
 | 축을 2개로 늘렸더니 가로 격자선이 사라짐 | `CartesianGrid`는 기본 축 id(0)를 본다. 두 축에 `yAxisId="left"/"right"`를 주면 id 0인 축이 없어져 눈금을 못 찾는다. 왼쪽은 id를 주지 말고 오른쪽만 `yAxisId="right"`로 |
 | 점 3,000개짜리 선이 30초 걸림 | `label` prop(`LabelList`)은 값이 한 점에만 적혀도 **점마다 `<text>`를 만든다.** 한 점만 표시하려면 `ReferenceDot` 하나로 |

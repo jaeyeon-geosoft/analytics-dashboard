@@ -493,32 +493,34 @@ function usePlotWindow(count: number, vertical: boolean): PlotWindow {
 }
 
 /**
- * 세로로 세운 값 축 이름.
+ * 값 축 이름. **돌리지 않고 플롯 위에 가로로 놓는다.**
  *
- * 글자 수로 자르면 공간이 남는데도 잘린다 — 축 이름에 붙는 "(앞 … 공통)"이 통째로
- * 날아갔다. 세로쓰기라 넘침도 세로로 나므로 CSS에 맡긴다.
+ * 세로로 세우면 한글이 문제가 된다 — `vertical-rl`은 글자를 한 자씩 세워 쌓는 세로쓰기라
+ * 책등·간판의 조판이고, 그렇다고 줄을 통째로 180도 돌리면 **글자 하나하나가 뒤집힌다**
+ * (실제로 그렇게 나가 있었다). 눕히는 쪽(엑셀식 아래→위)도 되지만, 가로로 두면 아무도
+ * 고개를 기울이지 않아도 된다. 이름이 긴 편이라(집계·기준선·`(0부터 아님)`이 붙는다)
+ * 읽는 비용이 그대로 값을 오독하는 비용이 된다.
  *
- * **왼쪽 이름을 180도 돌리지 말 것.** 서양 차트의 관습(아래에서 위로 읽는 세로 이름)이라
- * 라틴 문자만 있을 때는 맞지만, 한글은 `vertical-rl`에서 글자가 선 채로 쌓이므로 통째로
- * 돌리면 **글자 하나하나가 뒤집힌다** — 실제로 그렇게 나왔다. 돌리지 않으면 한글은
- * 위에서 아래로 바로 읽히고 라틴은 시계 방향으로 눕는다(한·일 세로쓰기의 기본).
+ * 대가는 세로 공간 한 줄이다. 카드 하한(`GRID_MIN_H`)은 건드리지 않았다 — 하한을 올리면
+ * 이미 저장된 7칸짜리 카드가 열 때마다 늘어나 같은 대시보드가 달라진다(절대 원칙 1).
  *
  * `color`는 축이 둘일 때만 들어온다. 이름 옆의 색 마크가 "이 축은 이 선의 것"을
  * 잇는다 — 글자 자체는 시리즈 색으로 칠하지 않는다(CLAUDE.md).
  */
-function AxisName({ label, color }: { label: string; color?: string }) {
+function AxisName({ label, color, align }: { label: string; color?: string; align?: "right" }) {
   return (
-    <div className="flex max-h-full min-h-0 shrink-0 flex-col items-center justify-center gap-1.5 self-center">
-      {color && (
-        <span className="h-3 w-0.5 shrink-0 rounded-full" style={{ background: color }} />
+    <p
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground",
+        align === "right" && "justify-end"
       )}
-      <div
-        className="min-h-0 overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-muted-foreground [writing-mode:vertical-rl]"
-        title={label}
-      >
-        {label}
-      </div>
-    </div>
+      title={label}
+    >
+      {color && (
+        <span className="h-0.5 w-3 shrink-0 rounded-full" style={{ background: color }} />
+      )}
+      <span className="truncate">{label}</span>
+    </p>
   )
 }
 
@@ -548,8 +550,15 @@ function AxisFrame({
 }) {
   return (
     <div className="absolute inset-0 flex flex-col">
-      <div className="flex min-h-0 flex-1 gap-1">
+      {/*
+        값 축 이름은 플롯 **위**에 가로로. 축이 둘이면 왼쪽 이름은 왼쪽에, 오른쪽 이름은
+        오른쪽에 붙여 어느 축의 것인지 자리로 말한다(색 마크는 그 위에 한 번 더).
+      */}
+      <div className="mb-1 flex shrink-0 items-baseline justify-between gap-3">
         <AxisName label={yLabel} color={colors?.[0]} />
+        {yRightLabel && <AxisName label={yRightLabel} color={colors?.[1]} align="right" />}
+      </div>
+      <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 min-w-0 flex-1">
             <div
@@ -563,7 +572,6 @@ function AxisFrame({
           </div>
           {plot && !plot.vertical && plot.bar}
         </div>
-        {yRightLabel && <AxisName label={yRightLabel} color={colors?.[1]} />}
       </div>
       <p
         className="mt-1 shrink-0 truncate text-center text-[11px] text-muted-foreground"
