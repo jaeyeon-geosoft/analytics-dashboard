@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, Download, Plus } from "lucide-react"
 import { type Layout } from "react-grid-layout"
 
@@ -14,7 +15,7 @@ import {
   type OpenState,
 } from "@/admin/lib/canvas-state"
 import { MAX_CHARTS } from "@/shared/lib/chart-spec"
-import { syncLayout } from "@/admin/lib/chart-layout"
+import { soloHeight, syncLayout } from "@/admin/lib/chart-layout"
 import { MAX_ROWS } from "@/admin/lib/parse-file"
 
 function CanvasFrame({ title, children }: { title?: React.ReactNode; children: React.ReactNode }) {
@@ -53,8 +54,28 @@ export function ChartCanvas({
   onRemoveChart: (id: string) => void
   onFile: (file: File) => void
 }) {
+  /*
+    카드가 한 장일 때 세로도 채우려면 캔버스가 얼마나 높은지 알아야 한다.
+
+    **재는 것은 스크롤 뷰포트다**(카드가 아니라). 뷰포트 높이는 내용과 무관하게 화면에서
+    정해지므로 카드 높이가 뷰포트를 다시 바꾸는 되먹임이 없다 — 폭을 재는 상자를 스크롤
+    안쪽에 두지 않는 것과 같은 이유다(CLAUDE.md).
+  */
+  const viewport = useRef<HTMLDivElement>(null)
+  const [canvasHeight, setCanvasHeight] = useState(0)
+  const empty = datasets.length === 0
+
+  useEffect(() => {
+    const element = viewport.current
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => setCanvasHeight(entry.contentRect.height))
+    observer.observe(element)
+    return () => observer.disconnect()
+    // 빈 상태에서는 이 상자가 아예 없다. 파일이 열려 상자가 생긴 뒤에 다시 건다.
+  }, [empty])
+
   // 열린 파일이 아직 없다 — 화면 전체가 파일을 여는 자리다.
-  if (datasets.length === 0) {
+  if (empty) {
     if (open.status === "loading") {
       return (
         <CanvasFrame
@@ -132,7 +153,14 @@ export function ChartCanvas({
         미리 비워둬야(`scrollbar-gutter`) 스크롤바가 생겼다 사라질 때 폭이 15px
         진동하지 않는다 — 진동하면 재측정이 되먹임에 빠진다(CLAUDE.md).
       */}
-      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+      <div ref={viewport} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+        {/*
+          **재기 전에는 격자를 그리지 않는다.** 한 장짜리 카드의 높이가 이 측정에서
+          나오는데, 먼저 그려버리면 대비값으로 자리가 잡히고 그 자리가 곧바로 저장돼
+          (rgl → `onLayoutChange`) 나중에 온 측정값이 밀려난다 — 실제로 508px에서
+          안 움직였다. 폭을 재는 쪽(`ChartGrid`)도 같은 이유로 한 프레임 기다린다.
+        */}
+        {canvasHeight > 0 && (
         <CanvasGrid
           charts={charts}
           datasets={datasets}
@@ -140,9 +168,11 @@ export function ChartCanvas({
           onLayoutChange={onLayoutChange}
           activeId={activeId}
           single={single}
+          soloH={soloHeight(canvasHeight)}
           onSelectChart={onSelectChart}
           onRemoveChart={onRemoveChart}
         />
+        )}
       </div>
     </div>
   )
@@ -159,6 +189,7 @@ function CanvasGrid({
   onLayoutChange,
   activeId,
   single,
+  soloH,
   onSelectChart,
   onRemoveChart,
 }: {
@@ -168,6 +199,8 @@ function CanvasGrid({
   onLayoutChange: (next: Layout) => void
   activeId: string
   single: boolean
+  /** 카드가 한 장일 때 쓸 높이(칸). 캔버스를 재서 나온 값이다. */
+  soloH: number
   onSelectChart: (id: string) => void
   onRemoveChart: (id: string) => void
 }) {
@@ -179,7 +212,7 @@ function CanvasGrid({
     return dataset ? [{ chart, dataset }] : []
   })
   // 카드가 늘거나 줄면 배치가 어긋난다. 넘기기 직전에 한 번 맞춘다.
-  const settled = syncLayout(cards.map(({ chart }) => chart.spec.id), layout)
+  const settled = syncLayout(cards.map(({ chart }) => chart.spec.id), layout, soloH)
 
   return (
     <ChartGrid layout={settled} onLayoutChange={onLayoutChange}>
