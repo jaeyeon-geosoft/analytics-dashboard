@@ -38,16 +38,29 @@
 
 ```
 src/
-├─ shared/   양쪽이 쓰는 것 — lib/{chart-types,aggregate,mapping-slots,infer-types,chart-spec,utils}
-│            components/{chart-view,data-table,chart-card,ui/*}, index.css(팔레트)
-├─ admin/    설정 화면 — 파싱·타입추론·사이드바·매핑 UI
-└─ viewer/   보기 화면 — API에서 받아 렌더
+├─ shared/   양쪽이 쓰는 것
+│            lib/    도메인 — aggregate/ · chart-spec/ · mapping-slots/ · infer-types/ ·
+│                    dashboard/(계약) · chart-types · chart-options(+labels) · dataset
+│                    렌더 보조 — chart-colors · number-format · axis-domain · axis-labels
+│                    잡동사니 — after-frames · tooltip-delay · utils
+│            components/  chart-view/ · chart-card/ · data-table/ · chart-grid ·
+│                    card-badge · file-picker-button · ui/*, index.css(팔레트)
+├─ admin/    설정 화면 — components/{settings-sidebar/,chart-canvas/,chart-type-picker/,…}
+│            lib/{parse-file/,canvas-state/,export-dashboard/,chart-layout/,derive-column/,…}
+│            hooks/use-admin-workspace (상태 기계)
+└─ viewer/   보기 화면 — components/* · lib/{load-dashboard,layout-from,is-moved}
+             hooks/use-dashboard-view
 ```
+
+**폴더로 갈라진 모듈은 `index.ts`가 공개 얼굴이다.** 바깥에서는 폴더 이름까지만
+가리키고(`@/shared/lib/aggregate`), 안쪽 파일을 직접 import하지 않는다 — 계산 단계를
+쪼개고 합치는 것이 호출부로 새면 갈라놓은 값어치가 없다. 폴더 안에서는 서로를
+경로로 직접 가리킨다(배럴을 통하면 순환이 생긴다).
 
 - **`shared/`는 `admin/`·`viewer/` 어느 쪽도 import하지 않는다.** 방향이 거꾸로다. eslint가 막는다.
 - **`admin/`과 `viewer/`는 서로 import하지 않는다.** 양쪽이 필요하면 `shared/`로 올린다.
 - **Vite `root`가 앱 폴더다**(`src/admin` / `src/viewer`). 진입 HTML은 자기 앱 폴더 안에 `index.html`로 있고 `./main.tsx`를 가리킨다. dev 서버가 **그 앱 하나만** 연다 — 어드민 서버에서 뷰어는 안 보인다. 포트는 5173(어드민) / 5174(뷰어)로 못 박혀 있다(`strictPort`).
-- 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(2026-08-06 확인: 어드민 912KB + xlsx 493KB → 뷰어 802KB. 뷰어에서도 카드를 옮기게 되면서 `react-grid-layout`이 양쪽에 들어가 68KB 늘었다). **차이가 크지 않은 것은 Recharts가 양쪽을 다 차지하기 때문이다** — 갈라놓는 값어치는 크기보다 "뷰어에 파서가 아예 없다"는 데 있다.
+- 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(2026-08-06 확인: 어드민 916KB + xlsx 493KB → 뷰어 805KB. 뷰어에서도 카드를 옮기게 되면서 `react-grid-layout`이 양쪽에 들어가 68KB 늘었고, 파일을 잘게 가르면서 모듈 경계만큼 3~4KB 더 늘었다). **차이가 크지 않은 것은 Recharts가 양쪽을 다 차지하기 때문이다** — 갈라놓는 값어치는 크기보다 "뷰어에 파서가 아예 없다"는 데 있다.
 - **`src/shared/index.css`의 `@source "../shared"`를 지우지 말 것.** Tailwind는 Vite의 `root`만 자동 스캔하는데 `shared/`가 그 바깥이라, 빼면 shared에만 있는 클래스가 빌드 CSS에서 통째로 빠진다 — 실제로 `h-7`·`border-separate`가 빠져 표가 깨졌다. 앱 폴더를 더 만들면 여기도 같이 볼 것.
 - CSS도 앱별로 갈린다(어드민 115KB / 뷰어 109KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다. 덩치의 대부분은 Pretendard 동적 서브셋의 `@font-face` 92벌이라 양쪽 공통이고, 앱별 차이는 여전히 10KB 남짓이다.
 - **`cacheDir`도 앱별로 갈라놨다. 지우지 말 것.** 기본값이면 둘 다 루트의 `node_modules/.vite`를 쓰는데, 설정이 서로 달라서 한쪽을 띄울 때마다 다른 쪽 캐시를 지우고 다시 만든다. 그러면 켜둔 탭이 들고 있던 `?v=` 해시가 사라져 **동적 import가 404로 죽는다** — 실제로 엑셀을 열 때 `Failed to fetch dynamically imported module: …/deps/xlsx.js?v=…`로 터졌다. SheetJS만 터지는 건 그것만 동적 import라 파일을 여는 순간 받아오기 때문이다(CSV는 papaparse가 정적이라 멀쩡하다).
@@ -60,8 +73,8 @@ src/
 - **Tailwind CSS 4** — `@tailwindcss/vite` 플러그인 방식, `tailwind.config` 파일 없음. 테마는 전부 `src/shared/index.css`의 CSS 변수.
 - **shadcn/ui** — style `radix-rhea`, baseColor `neutral`, 아이콘 `lucide-react`
 - **폰트: Pretendard(한글) + Inter(라틴)** — Inter에는 한글 글리프가 없어서 그것만 두면 한글이 OS 기본 폰트로 떨어진다(맥·윈도우가 서로 다르게 보인다). `--font-sans`가 Pretendard를 먼저 본다. **동적 서브셋 CSS를 쓸 것**(`pretendardvariable-dynamic-subset.css`) — 통짜 파일은 2MB고, 서브셋이면 쓰는 글자 범위만 받는다(실측 9벌).
-- **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 렌더러는 `src/shared/components/chart-view.tsx` 한 곳이고, Recharts에서 반복해서 걸리는 함정은 [docs/lessons.md](docs/lessons.md#recharts에서-걸린-것들)의 표에 모아뒀다.
-- **CSV/TSV 파서: papaparse** — `src/admin/lib/parse-file.ts`에서만 쓴다. 순수 파서라 네트워크 호출 없음.
+- **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 렌더러는 `src/shared/components/chart-view/` 한 곳이고, Recharts에서 반복해서 걸리는 함정은 [docs/lessons.md](docs/lessons.md#recharts에서-걸린-것들)의 표에 모아뒀다.
+- **CSV/TSV 파서: papaparse** — `src/admin/lib/parse-file/`에서만 쓴다. 순수 파서라 네트워크 호출 없음.
 - **Excel 파서: SheetJS(`xlsx`)** — npm 레지스트리 버전은 `0.18.5`에서 멈췄고 알려진 취약점이 있어서, **벤더 CDN 타르볼로 고정**되어 있다(`package.json`의 URL). 빌드 시점 설치일 뿐 런타임 네트워크 호출은 없다. 버전을 올릴 때도 같은 방식으로.
 
 아직 도입 안 된 것 (필요해질 때 추가):
@@ -102,7 +115,7 @@ npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 색 선택 규칙:
 - **순서를 바꾸면 의미가 달라지는 범주**(구간, 등급, 퍼널 단계, 연령대)는 범주형이 아니라 **순차형**이다 → `--chart-seq-*`. 순서가 무의미한 범주(제품명, 지역, 팀)는 범주형.
 - **막대 길이가 이미 보여주는 값을 색으로 다시 칠하지 말 것.** 단일 시리즈 막대는 전부 `--chart-1` 하나로.
-- **9번째 시리즈는 색을 새로 만들지 말 것.** "기타"로 묶거나 차트를 분할(small multiples)한다. 이 상한은 UI에서도 강제된다 — 고유값이 8개를 넘는 컬럼은 분할/누적 기준 슬롯의 후보에서 빠진다(`src/shared/lib/mapping-slots.ts`).
+- **9번째 시리즈는 색을 새로 만들지 말 것.** "기타"로 묶거나 차트를 분할(small multiples)한다. 이 상한은 UI에서도 강제된다 — 고유값이 8개를 넘는 컬럼은 분할/누적 기준 슬롯의 후보에서 빠진다(`src/shared/lib/mapping-slots/`).
 - **산점도·버블·small multiples는 시리즈 3개까지.** 이 형태는 아무 두 마크나 나란히 놓일 수 있어서, 4개 이상은 색 구분이 무너진다(`--chart-4` 노랑과 `--chart-2` 주황이 함께 등장). 넘으면 시리즈를 줄이거나 분할.
 - 색은 **엔티티에 고정**한다. 필터로 시리즈 개수가 바뀌어도 남은 시리즈의 색이 바뀌면 안 된다.
 
@@ -121,7 +134,7 @@ npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 - **범주 축은 파일에 있는 순서가 기본이다.** 값 큰 순을 기본으로 두면 시간대(`07:00`)·구간(`200~250ms`)·등급처럼 **타입은 범주지만 순서가 곧 의미인** 컬럼에서 축이 거짓말을 한다(실제로 07·05·08시 순으로 나갔다). 순위를 보려는 범주(제품명·지역)는 카드의 `정렬`을 `값 큰 순`으로 바꾼다. **날짜·숫자 축과 선·영역은 이 선택을 보지 않는다** — 거기서는 축 자체가 순서다. 원형의 "기타" 접기만은 정렬과 무관하게 **값으로** 고른다(뒤에 있다는 이유로 큰 조각이 접히면 "기타"가 제일 큰 조각이 된다).
 - 축 라벨·단위는 생략하지 말 것. 분석가가 수치를 읽어야 하는 도구다.
 - **값 축 이름은 세우지 말고 플롯 위에 가로로 놓을 것.** 세로쓰기(`vertical-rl`)는 한글을 한 자씩 세워 쌓는 책등 조판이고, 그렇다고 줄을 통째로 180도 돌리면 **글자 하나하나가 뒤집힌다** — 실제로 그렇게 나가 있었다. 엑셀식으로 눕히는 것도 되지만 이름이 긴 편이라(집계·기준선·`(0부터 아님)`이 붙는다) 고개를 기울이게 하지 않는다. 축이 둘이면 왼쪽 이름은 왼쪽, 오른쪽 이름은 오른쪽에 붙여 자리로 구분하고 색 마크를 앞에 둔다. 대가는 세로 한 줄인데, **카드 높이 하한(`GRID_MIN_H`)은 올리지 말 것** — 올리면 이미 저장된 7칸 카드가 열 때마다 늘어나 같은 대시보드가 달라진다(절대 원칙 1).
-- **막대는 막대마다 값을 적는다. 단 들어갈 때만.** 막대는 개수가 화면에 묶여 있어(창으로 잘라 그린다) 전부 적어도 읽을 수 있고, 값을 읽는 도구에서 숫자를 툴팁에만 두면 하나씩 짚어봐야 한다. **칸 폭이 글자 폭보다 좁으면 최대값 하나로 물러난다**(`everyBar`, `chart-view.tsx`) — 겹친 숫자는 하나도 못 읽게 만든다. 폭은 재지 않고 어림한다(`DIGIT_W`), 가르는 것이 "들어가는가" 하나뿐이라 정확할 필요가 없다. 가로 막대는 값이 막대 오른쪽에 나란히 서고 칸마다 28px가 확보되어 있어 언제나 적고, **오른쪽 여백을 가장 긴 라벨에 맞춰 넓힌다**(고정 폭이면 자릿수가 큰 값이 잘린다).
+- **막대는 막대마다 값을 적는다. 단 들어갈 때만.** 막대는 개수가 화면에 묶여 있어(창으로 잘라 그린다) 전부 적어도 읽을 수 있고, 값을 읽는 도구에서 숫자를 툴팁에만 두면 하나씩 짚어봐야 한다. **칸 폭이 글자 폭보다 좁으면 최대값 하나로 물러난다**(`everyBar`, `chart-view/`) — 겹친 숫자는 하나도 못 읽게 만든다. 폭은 재지 않고 어림한다(`DIGIT_W`), 가르는 것이 "들어가는가" 하나뿐이라 정확할 필요가 없다. 가로 막대는 값이 막대 오른쪽에 나란히 서고 칸마다 28px가 확보되어 있어 언제나 적고, **오른쪽 여백을 가장 긴 라벨에 맞춰 넓힌다**(고정 폭이면 자릿수가 큰 값이 잘린다).
 - **선·영역은 여전히 한 점만.** 최신값 하나다. 점마다 `<text>`를 만들면 3,000점에서 렌더가 30초 걸리고(측정), 선은 모양이 정보라 숫자를 흩뿌리면 그 모양을 덮는다.
 - **시리즈가 여럿이면 어느 쪽도 붙이지 않는다** — 끝점이 겹치거나 막대가 좁아 어느 것의 값인지 오히려 헷갈린다. 그때는 범례+툴팁+표가 값을 맡는다.
 - **Recharts 마크 애니메이션은 꺼둘 것**(`isAnimationActive={false}`). 켜두면 갱신 때 직접 라벨이 사라지고, 값을 읽는 도구에서 마크가 움직이는 건 방해만 된다.
@@ -154,7 +167,7 @@ npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 
 ## 대시보드 계약
 
-어드민이 만들고 뷰어가 그리는 것의 모양은 `src/shared/lib/dashboard.ts` **한 곳**에 있다.
+어드민이 만들고 뷰어가 그리는 것의 모양은 `src/shared/lib/dashboard/` **한 곳**에 있다.
 지금은 JSON 파일로 오가지만 API가 붙으면 그대로 응답 본문이 된다 — **백엔드와의 합의라
 함부로 늘리지 말 것.**
 
@@ -177,6 +190,14 @@ npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 ## 코드 컨벤션
 
 - import는 `@/` alias 사용 (`@` → `src/`). 상대경로 `../../` 지양.
+- **파일 하나에 컴포넌트 하나.** 타입·상수·순수 함수·훅은 옆 파일로 뺀다 — 여럿을 한
+  파일에 두면 "이 화면이 무엇으로 이루어졌나"가 스크롤 안에 숨는다. eslint의
+  `react-refresh/only-export-components`가 컴포넌트 파일에서 상수를 export하는 것을 이미
+  막고 있으니, 규칙을 우회하지 말고 파일을 가를 것.
+- **매직 넘버·반복되는 문자열은 이름을 붙여 상수로 둘 것.** 특히 두 곳 이상에서 쓰이는
+  값(축 폭, 접두사, 지연 시간)은 한 곳에서 나와야 한다 — 두 벌이 되는 순간 한쪽만
+  고쳐진다. 실제로 카드 번호 배지와 파일 input 패턴이 각각 두 벌·네 벌이었다
+  (`card-badge.tsx`, `file-picker-button.tsx`로 합쳤다).
 - `src/shared/components/ui/`는 shadcn CLI가 생성한 파일들. 직접 수정은 최소화하고, 커스터마이즈는 감싸는 컴포넌트나 CSS 변수로 해결할 것.
 - 유틸은 `src/shared/lib/`(양쪽이 쓰는 것) 또는 `src/admin/lib/`(어드민 전용), `cn()`은 `@/shared/lib/utils`.
 - shadcn 컴포넌트는 직접 손으로 작성하지 말고 `npx shadcn@latest add <name>`으로 추가.
@@ -195,14 +216,14 @@ npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
 - 파일 크기와 행 수에 상한을 두고, 넘으면 사용자에게 알릴 것. 브라우저 메모리로 처리하는 구조라 수백 MB 파일은 탭을 죽인다.
 - 상한과 허용 확장자는 `src/admin/lib/file-constraints.ts` 한 곳에 있다 (현재 50MB, `.csv`/`.tsv`/`.xlsx`/`.xls`). 검증 문구도 여기서 나오니 여러 곳에 흩뿌리지 말 것. 행 수 상한은 파서가 붙을 때 여기에 추가한다.
 - 큰 파일 파싱은 UI를 멈추지 않게 할 것 (스트리밍 파싱 또는 Web Worker). **단, papaparse의 청크 스트리밍(`chunk` 콜백)은 쓰지 말 것** — 청크마다 따로 디코딩해서 10MB 경계에 걸친 멀티바이트 문자가 조용히 깨진다(37MB 한글 파일에서 재현됨). 지금은 전체를 한 번에 디코딩한 뒤 파싱하고, 상한 50MB에서 200~300ms 블로킹을 감수한다. 더 커져야 하면 Worker로 옮길 것.
-- **인코딩을 UTF-8로 단정하지 말 것.** 한국 Excel의 "CSV(쉼표로 분리)"는 CP949로 저장된다. `parse-file.ts`가 앞부분을 UTF-8로 디코딩해보고 치환 문자가 나오면 EUC-KR로 다시 읽는다. 감지 결과는 데이터셋 카드에 노출해서 사용자가 틀린 걸 알아챌 수 있게 한다.
+- **인코딩을 UTF-8로 단정하지 말 것.** 한국 Excel의 "CSV(쉼표로 분리)"는 CP949로 저장된다. `parse-file/`가 앞부분을 UTF-8로 디코딩해보고 치환 문자가 나오면 EUC-KR로 다시 읽는다. 감지 결과는 데이터셋 카드에 노출해서 사용자가 틀린 걸 알아챌 수 있게 한다.
 - **papaparse `dynamicTyping`은 끈 채로 둘 것.** 켜면 `"007"`을 조용히 `7`로 바꿔서 타입 추론이 무의미해진다.
 - **Excel은 `raw: false`로 읽되 `dateNF`를 `XLSX.read`에 줄 것.** `sheet_to_json`에 주면 셀 서식이 이겨서 `7/30/26`으로 나오고 날짜 추론에 걸리지 않는다. `raw: true`는 Date 객체를 주지만 시간대 때문에 하루가 밀린다.
 - **SheetJS는 동적 import로 둘 것** (gzip 160KB). CSV만 쓰는 경우가 대부분이라 Excel을 열 때만 받게 한다.
 - **확장자만 보고 텍스트로 읽지 말 것.** xlsx/xls를 papaparse에 넘기면 에러 없이 그럴듯한 가짜 컬럼과 행이 나온다 — 실제로 랜덤 바이너리에서 "15행 2컬럼"이 나왔다.
 - **헤더가 1행이라고 단정하지 말 것.** 제목 줄이 위에 붙은 리포트성 파일이 흔하다. CSV·Excel 모두 행 배열로 읽은 뒤 `shape()`에서 헤더 행을 고른다.
 - **빈 줄을 파서 단계에서 지우지 말 것.** 지우면 "헤더 행" 번호가 사용자가 파일에서 세는 줄 번호와 어긋난다. 대신 papaparse의 구분자 추측이 빈 줄 하나에도 깨지므로(TSV가 1컬럼이 된다) `guessDelimiter`로 먼저 정해서 넘겨야 한다.
-- 컬럼 타입(숫자/날짜/범주) 추론은 실패할 수 있다. 추론 결과를 사용자가 고칠 수 있게 만들 것 — 조용히 잘못 추론하는 것이 최악이다. 구현은 `src/shared/lib/infer-types.ts`, UI는 사이드바 파일 목록을 펼쳤을 때 나오는 "컬럼" 목록.
+- 컬럼 타입(숫자/날짜/범주) 추론은 실패할 수 있다. 추론 결과를 사용자가 고칠 수 있게 만들 것 — 조용히 잘못 추론하는 것이 최악이다. 구현은 `src/shared/lib/infer-types/`, UI는 사이드바 파일 목록을 펼쳤을 때 나오는 "컬럼" 목록.
 - **타입은 3종(숫자/날짜/범주)에서 늘리지 말 것.** 포맷 추측 엔진을 만들 자리가 아니다. 애매하면 범주로 두고 사용자가 고치게 한다.
 - **날짜 판정에 `new Date()`를 쓰지 말 것.** `new Date("1")`도 통과하고 브라우저마다 해석이 다르다. 알아볼 수 있는 패턴만 매칭하고 연·월·일 범위까지 확인할 것.
 - **선행 0이 붙은 정수는 숫자가 아니라 범주로 본다.** 우편번호·사번·전화번호이고, 숫자로 바꾸면 0이 날아가 원본을 잃는다.

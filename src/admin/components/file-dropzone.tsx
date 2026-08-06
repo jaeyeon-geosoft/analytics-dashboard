@@ -1,9 +1,14 @@
 import { useState } from "react"
 import { Upload } from "lucide-react"
 
-import { Button } from "@/shared/components/ui/button"
+import { FilePickerButton } from "@/shared/components/file-picker-button"
+import {
+  ACCEPTED_EXTENSIONS,
+  ACCEPT_ATTR,
+  MAX_FILE_BYTES,
+  formatBytes,
+} from "@/admin/lib/file-constraints"
 import { cn } from "@/shared/lib/utils"
-import { ACCEPTED_EXTENSIONS, ACCEPT_ATTR, MAX_FILE_BYTES, formatBytes } from "@/admin/lib/file-constraints"
 
 export function FileDropzone({
   onFile,
@@ -49,21 +54,9 @@ export function FileDropzone({
         CSV 또는 Excel 파일을 이 영역으로 끌어다 놓으세요.
       </p>
 
-      <Button asChild variant="outline" size="sm" className="mt-5">
-        <label className="cursor-pointer">
-          파일 선택
-          <input
-            type="file"
-            accept={ACCEPT_ATTR}
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) onFile(file)
-              event.target.value = ""
-            }}
-          />
-        </label>
-      </Button>
+      <FilePickerButton accept={ACCEPT_ATTR} onFile={onFile} className="mt-5">
+        파일 선택
+      </FilePickerButton>
 
       <p className="mt-6 font-mono text-[11px] text-muted-foreground/80">
         {ACCEPTED_EXTENSIONS.join(" · ")} — 최대 {formatBytes(MAX_FILE_BYTES)}
