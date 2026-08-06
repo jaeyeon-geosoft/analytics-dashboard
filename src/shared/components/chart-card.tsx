@@ -198,7 +198,12 @@ export function ChartCard({
   const toggle = useChartTableToggle(slow)
 
   const busy = toggle.swapping || (pending && slow)
+  // 막대 값 라벨이 접혔는지는 폭을 재봐야 나오는 값이라 렌더러가 알려준다.
+  const [labelsFolded, setLabelsFolded] = useState(false)
   const caveats = plot ? caveatsFor(plot, chartType) : []
+  if (labelsFolded) {
+    caveats.push("칸이 좁아 값은 가장 큰 막대에만 적었습니다. 카드를 넓히거나 표 보기로 나머지를 보세요.")
+  }
   const { axes, aside } = describeMapping(spec)
   // 저장된 제목이 우선. 어드민은 아직 제목이 없어서 매핑 요약으로 떨어진다.
   const heading = title ?? axes
@@ -313,7 +318,7 @@ export function ChartCard({
               </p>
             )
           ) : toggle.view === "chart" ? (
-            <ChartView chartType={chartType} plot={plot} />
+            <ChartView chartType={chartType} plot={plot} onLabelsFolded={setLabelsFolded} />
           ) : (
             <DataTable plot={plot} />
           )}

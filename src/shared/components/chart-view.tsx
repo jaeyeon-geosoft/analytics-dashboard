@@ -397,6 +397,8 @@ type PlotWindow = {
   start: number
   /** 창에 들어가는 범주 수 */
   size: number
+  /** 잰 플롯 크기(px). 세로 막대는 폭, 가로 막대는 높이. 값 라벨이 들어갈지 가른다. */
+  extent: number
 }
 
 /**
@@ -487,7 +489,7 @@ function usePlotWindow(count: number, vertical: boolean): PlotWindow {
       </div>
     ) : null
 
-  return { plotRef, onWheel, bar, vertical, start: offset, size }
+  return { plotRef, onWheel, bar, vertical, start: offset, size, extent }
 }
 
 /**
@@ -586,13 +588,25 @@ function AxisFrame({
  * 막대는 창으로 잘라 그리며 최대값에 라벨을 붙이고, 원형과 산점도는 범주 축이 아예
  * 없다. 한 함수에 모아두면 어느 변수가 어느 갈래의 것인지 읽어낼 수 없다.
  */
-export function ChartView({ chartType, plot }: { chartType: ChartType; plot: PlotData }) {
+export function ChartView({
+  chartType,
+  plot,
+  onLabelsFolded,
+}: {
+  chartType: ChartType
+  plot: PlotData
+  /**
+   * 막대 값 라벨이 최대값 하나로 접혔는지 알린다. 접힐지는 **폭을 재봐야** 알 수 있어서
+   * 카드가 스스로 못 낸다 — 여기서 알려주고 카드가 머리줄에 적는다.
+   */
+  onLabelsFolded?: (folded: boolean) => void
+}) {
   if (plot.kind === "scatter") {
     return <ScatterView frame={plot.frame} connected={chartType === "path"} />
   }
   if (chartType === "pie") return <PieView frame={plot.frame} />
   if (isTimeline(chartType)) return <TimelineView frame={plot.frame} chartType={chartType} />
-  return <BarView frame={plot.frame} chartType={chartType} />
+  return <BarView frame={plot.frame} chartType={chartType} onLabelsFolded={onLabelsFolded} />
 }
 
 /**
@@ -781,15 +795,44 @@ const SPOT_LABEL = {
   fontWeight: 500,
 } as const
 
+function spotText(value: unknown): string {
+  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })
+}
+
 /**
- * 최대값 한 점에만 값을 적어 넣는다. 라벨을 render prop으로 그리는 대신 데이터에
- * 얹으면 Recharts의 `LabelList`가 알아서 위치를 잡는다.
- *
- * **창으로 자르기 전에** 붙인다 — 그래야 창 안의 최대가 아니라 진짜 최대에 붙는다.
+ * 11px 숫자 한 글자의 대략적인 폭(px)과 라벨 양옆 여유. **재지 않고 어림잡는다** —
+ * 이 값이 가르는 것은 "라벨이 칸에 들어가는가" 하나뿐이라 정확할 필요가 없다.
  */
-function withSpotLabel(frame: ChartFrame) {
+const DIGIT_W = 6.6
+const LABEL_PAD = 8
+/** 값 축과 좌우 여백이 먹는 폭. 막대 한 칸의 폭을 어림할 때 뺀다. */
+const VALUE_AXIS_W = 72
+
+/** 가장 긴 값 라벨의 어림 폭(px). 칸에 들어가는지 재는 쪽과 자리를 비우는 쪽이 함께 쓴다. */
+function valueLabelWidth(frame: ChartFrame): number {
+  const key = frame.series[0]?.key
+  if (!key) return 0
+  const longest = frame.rows.reduce((most, row) => Math.max(most, spotText(row[key]).length), 0)
+  return longest * DIGIT_W + LABEL_PAD
+}
+
+/**
+ * 막대 끝에 값을 적어 넣는다. 라벨을 render prop으로 그리는 대신 데이터에 얹으면
+ * Recharts의 `LabelList`가 알아서 위치를 잡는다.
+ *
+ * `everyBar`면 보이는 막대 전부에, 아니면 **최대값 한 곳에만** 적는다. 값을 읽는
+ * 도구라 전부 적는 쪽이 기본이지만, 칸이 글자보다 좁으면 숫자끼리 겹쳐 아무것도
+ * 못 읽는다 — 그때는 최대값 하나로 물러난다(판단은 `BarView`가 한다).
+ *
+ * **창으로 자르기 전에** 붙인다 — 그래야 최대값이 창 안의 최대가 아니라 진짜 최대다.
+ */
+function withSpotLabel(frame: ChartFrame, everyBar: boolean) {
   const key = frame.series[0]?.key
   if (!key || frame.rows.length === 0) return frame.rows
+
+  if (everyBar) {
+    return frame.rows.map((row) => ({ ...row, [SPOT]: spotText(row[key]) }))
+  }
 
   const spot = frame.rows.reduce(
     (best, row, index) => (Number(row[key]) > Number(frame.rows[best][key]) ? index : best),
@@ -798,15 +841,20 @@ function withSpotLabel(frame: ChartFrame) {
 
   return frame.rows.map((row, index) => ({
     ...row,
-    [SPOT]:
-      index === spot
-        ? Number(row[key]).toLocaleString(undefined, { maximumFractionDigits: 1 })
-        : "",
+    [SPOT]: index === spot ? spotText(row[key]) : "",
   }))
 }
 
 /** 막대 · 가로 막대 · 누적 막대. 마크 하나가 `<rect>` 하나라 창으로 잘라 그린다. */
-function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType }) {
+function BarView({
+  frame,
+  chartType,
+  onLabelsFolded,
+}: {
+  frame: ChartFrame
+  chartType: ChartType
+  onLabelsFolded?: (folded: boolean) => void
+}) {
   const config = configFor(frame.series)
   const multi = frame.series.length > 1
   const horizontal = chartType === "hbar"
@@ -814,7 +862,36 @@ function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType
   const axis = useCategoryAxis(frame)
 
   const plot = usePlotWindow(frame.rows.length, horizontal)
-  const labeled = useMemo(() => (multi ? frame.rows : withSpotLabel(frame)), [frame, multi])
+  const labelW = useMemo(() => valueLabelWidth(frame), [frame])
+  /*
+    막대마다 값을 적을지.
+
+    가로 막대는 값이 막대 오른쪽에 나란히 서고 칸마다 최소 28px가 확보되므로 항상
+    적는다. 세로 막대는 칸 폭이 글자 폭보다 넓을 때만 — 좁은 카드에 막대가 여럿이면
+    숫자끼리 겹쳐 오히려 하나도 못 읽는다. 시리즈가 여럿이면 어느 막대의 값인지
+    헷갈리므로 붙이지 않는다(CLAUDE.md).
+  */
+  // 칸 폭은 창의 정원(`plot.size`)이 아니라 **실제로 그려지는 막대 수**로 나눈다 —
+  // 범주가 정원보다 적으면 남는 자리까지 막대가 벌어져 선다.
+  const drawn = Math.min(plot.size, frame.rows.length)
+  const everyBar =
+    !multi && (horizontal || (drawn > 0 && (plot.extent - VALUE_AXIS_W) / drawn >= labelW))
+  const labeled = useMemo(
+    () => (multi ? frame.rows : withSpotLabel(frame, everyBar)),
+    [frame, multi, everyBar]
+  )
+
+  /*
+    접힌 것을 카드에 알린다. 조용히 최대값 하나만 남으면 "왜 하나만 나오지?"가 된다.
+
+    시리즈가 여럿일 때는 애초에 라벨을 안 붙이는 것이라 접힌 게 아니다. 정리 함수로
+    `false`를 돌려보내야 차트 종류를 바꾸거나 표 보기로 갈 때 표시가 남지 않는다.
+  */
+  const folded = !multi && !everyBar
+  useEffect(() => {
+    onLabelsFolded?.(folded)
+    return () => onLabelsFolded?.(false)
+  }, [folded, onLabelsFolded])
   const rows = useMemo(
     () => labeled.slice(plot.start, plot.start + plot.size),
     [labeled, plot.start, plot.size]
@@ -838,8 +915,14 @@ function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType
         <BarChart
           data={rows}
           layout={horizontal ? "vertical" : "horizontal"}
-          // 최대값 라벨이 막대 끝 바깥에 놓일 자리를 둔다.
-          margin={{ top: horizontal ? 8 : 24, right: horizontal ? 56 : 16, bottom: 4, left: 4 }}
+          // 값 라벨이 막대 끝 바깥에 놓일 자리를 둔다. 가로 막대는 그 자리가 오른쪽
+          // 여백이라 가장 긴 라벨에 맞춰 넓힌다 — 고정 폭이면 자릿수가 큰 값이 잘린다.
+          margin={{
+            top: horizontal ? 8 : 24,
+            right: horizontal ? Math.max(56, labelW + 12) : 16,
+            bottom: 4,
+            left: 4,
+          }}
           barCategoryGap="20%"
         >
           <CartesianGrid
@@ -911,7 +994,7 @@ function BarView({ frame, chartType }: { frame: ChartFrame; chartType: ChartType
                 // 누적 조각 사이는 테두리가 아니라 카드 색 2px 틈으로 갈라놓는다.
                 stroke={stacked ? "var(--card)" : undefined}
                 strokeWidth={stacked ? 2 : 0}
-                // 최대값 막대 끝에만 값을 적는다.
+                // 막대 끝에 값을 적는다 — 전부, 좁으면 최대값 하나(`everyBar`).
                 label={
                   multi
                     ? undefined
