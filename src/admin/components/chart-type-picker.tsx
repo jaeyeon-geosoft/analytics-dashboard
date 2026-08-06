@@ -144,16 +144,18 @@ export function ChartTypePicker({
         value={value}
         disabled={disabled}
         onValueChange={(next) => next && onValueChange(next as ChartType)}
-        className="grid w-full grid-cols-3 gap-1.5"
+        // 8종을 3열로 두면 3줄(약 190px)이라 사이드바 세로의 1/3을 먹었다. 정작 자주
+        // 만지는 매핑이 스크롤 밖으로 밀린다. 4열 2줄로 줄인다.
+        className="grid w-full grid-cols-4 gap-1"
       >
         {CHART_TYPES.map((type) => (
           <ToggleGroupItem
             key={type.value}
             value={type.value}
             aria-label={type.label}
-            className="h-auto flex-col gap-1.5 rounded-xl px-1 py-2.5 data-[state=on]:border-chart-1/40 data-[state=on]:bg-chart-1/10 data-[state=on]:text-chart-1"
+            className="h-auto flex-col gap-1 rounded-lg px-0.5 py-2 data-[state=on]:border-chart-1/40 data-[state=on]:bg-chart-1/10 data-[state=on]:text-chart-1"
           >
-            <svg viewBox="0 0 20 18" className="h-[18px] w-5" fill="currentColor" aria-hidden>
+            <svg viewBox="0 0 20 18" className="h-4 w-[18px]" fill="currentColor" aria-hidden>
               {type.glyph}
             </svg>
             <span className="text-[10px] leading-none font-medium text-foreground/70">
@@ -163,7 +165,7 @@ export function ChartTypePicker({
         ))}
       </ToggleGroup>
       {selected && (
-        <p className="mt-2.5 text-[11px] text-muted-foreground">{selected.hint}</p>
+        <p className="mt-2 text-[11px] text-muted-foreground">{selected.hint}</p>
       )}
     </>
   )

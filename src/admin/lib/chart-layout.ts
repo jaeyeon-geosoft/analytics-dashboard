@@ -9,7 +9,23 @@ import { GRID_COLS, GRID_MIN_H, GRID_MIN_W } from "@/shared/lib/dashboard"
 const DEFAULT_W = GRID_COLS / 2
 const DEFAULT_H = 8
 
-export function slotFor(index: number): LayoutItem {
+/**
+ * 카드가 한 장뿐이면 **폭을 다 쓴다.**
+ *
+ * 절반짜리로 두면 파일을 처음 열었을 때 오른쪽 절반이 통째로 비고, 폭을 다 쓰는 파일
+ * 바와 어긋나 화면이 덜 만들어진 것처럼 보인다. 첫 화면이 그 상태라 인상이 거기서 굳는다.
+ * 세로도 종전(404px)보다 키워 캔버스를 채운다.
+ *
+ * **이미 놓인 카드를 다시 줄이지는 않는다.** 차트를 추가하면 새 카드가 아랫줄에 놓이고,
+ * 배치를 바꾸는 것은 사용자 몫이다 — 손댄 배치를 도구가 되돌리면 그게 더 놀랍다.
+ */
+const SOLO_W = GRID_COLS
+const SOLO_H = 10
+
+export function slotFor(index: number, count = 2): LayoutItem {
+  if (count === 1) {
+    return { i: "", x: 0, y: 0, w: SOLO_W, h: SOLO_H, minW: GRID_MIN_W, minH: GRID_MIN_H }
+  }
   return {
     i: "",
     x: (index % 2) * DEFAULT_W,
@@ -30,11 +46,19 @@ export function slotFor(index: number): LayoutItem {
  */
 export function syncLayout(ids: string[], layout: Layout): Layout {
   const known = new Map(layout.map((item) => [item.i, item]))
-  return ids.map((id, index) => {
+  /*
+    새 카드가 갈 열은 **지금까지 놓인 반폭 카드 수**로 정한다. 목록 인덱스로 세면 폭을
+    다 쓰는 카드(1장일 때)가 한 자리를 먹은 것으로 계산돼 다음 카드가 오른쪽 절반에
+    놓이고 왼쪽이 빈 채 남는다 — 실제로 그렇게 나왔다.
+  */
+  let halves = 0
+  return ids.map((id) => {
     const found = known.get(id)
     // 최소 크기는 여기서 다시 박는다 — 예전에 저장된 배치에는 없을 수 있다.
-    return found
+    const item = found
       ? { ...found, minW: GRID_MIN_W, minH: GRID_MIN_H }
-      : { ...slotFor(index), i: id }
+      : { ...slotFor(halves, ids.length), i: id }
+    if (item.w <= DEFAULT_W) halves += 1
+    return item
   })
 }

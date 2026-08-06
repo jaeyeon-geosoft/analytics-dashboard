@@ -215,9 +215,28 @@ export function ChartCard({
   if (labelsFolded) {
     caveats.push("칸이 좁아 값은 가장 큰 막대에만 적었습니다. 카드를 넓히거나 표 보기로 나머지를 보세요.")
   }
-  const { axes, aside } = describeMapping(spec)
-  // 저장된 제목이 우선. 어드민은 아직 제목이 없어서 매핑 요약으로 떨어진다.
-  const heading = title ?? axes
+  const { axes, aside, measure, by } = describeMapping(spec)
+  /*
+    저장된 제목이 우선. 어드민은 아직 제목이 없어서 **재는 값**이 제목이 된다
+    (개수 집계는 값 컬럼이 없으므로 "행 개수").
+
+    제목이 저장돼 있으면 매핑 요약 전체를 부제로 내린다 — 제목이 무엇으로 그린
+    차트인지까지 말해주지는 않기 때문이다.
+  */
+  const counting = usesAggregation(chartType) && aggregation === "count"
+  const heading = title ?? measure ?? (counting && by ? "행 개수" : undefined)
+  /*
+    부제가 제목을 되풀이하지 않게 한다. 지금 내보내기는 제목 자리에 매핑 요약을 그대로
+    넣어서(어드민에 제목 입력란이 아직 없다) 그냥 이으면 같은 문장이 두 줄로 선다.
+  */
+  const context = title
+    ? title === axes
+      ? undefined
+      : axes
+    : by
+      ? `${by} 기준`
+      : undefined
+  const subtitle = [context, aside].filter(Boolean).join(" · ")
 
   const missing = MAPPING_SLOTS[chartType]
     .filter((slot) => !slot.optional && !mapping[slot.key])
@@ -258,19 +277,29 @@ export function ChartCard({
           {number}
         </button>
         )}
+        {/*
+          머리줄은 두 층이다 — **무엇을 재는가**(제목)와 **무엇을 기준으로 갈랐는가**(부제).
+          한 줄로 이어 붙였을 때는 카드가 좁아지면 앞에서부터 잘려서 정작 재는 값이
+          먼저 사라졌다. 층을 나누면 좁아져도 제목이 마지막까지 남는다.
+        */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm">
+          <p className="truncate text-sm font-medium">
             {heading ? (
               <span className="font-mono">{heading}</span>
             ) : (
-              <span className="text-muted-foreground">컬럼 선택 전</span>
+              <span className="font-normal text-muted-foreground">컬럼 선택 전</span>
             )}
-            {aside && <span className="font-mono text-muted-foreground"> · {aside}</span>}
             {/* 집계 방식은 화면에 밝힌다. 몇 줄이 한 마크로 접혔는지가 안 보이면 오독한다. */}
-            {usesAggregation(chartType) && (
-              <span className="text-muted-foreground"> ({AGGREGATION_LABELS[aggregation]})</span>
+            {heading && usesAggregation(chartType) && (
+              <span className="font-normal text-muted-foreground">
+                {" "}
+                {AGGREGATION_LABELS[aggregation]}
+              </span>
             )}
           </p>
+          {subtitle && (
+            <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{subtitle}</p>
+          )}
           {caveats.length > 0 && (
             <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
               <AlertTriangle className="mt-px size-3.5 shrink-0" />

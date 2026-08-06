@@ -59,7 +59,12 @@ const SINGLE = "var(--chart-1)"
 /** "기타"는 엔티티가 아니라 나머지를 접은 자리라서 무채색으로 물러난다. */
 const OTHER_FILL = "var(--muted-foreground)"
 
-const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" }
+/*
+  차트 안 글자는 세 층이다. **값 라벨(읽는 수) > 축 이름(무엇의 축인지) > 눈금(눈금)**.
+  예전에는 셋이 전부 11px muted라 위계가 없었고, 축 이름이 눈금 사이에 떠 있는
+  글자처럼 보였다. 크기와 자간으로 가른다 — 색을 더 쓰면 마크보다 눈에 띈다.
+*/
+const AXIS_TICK = { fontSize: 10, fill: "var(--muted-foreground)" }
 const GRID = "var(--border)"
 
 /** 시리즈가 하나뿐이면 색을 나눌 이유가 없다. 여럿일 때만 슬롯 순서대로. */
@@ -340,7 +345,7 @@ function valueDomain(
  * 라벨 폭은 글자로 어림한다 — 실제로 재려면 결국 Recharts가 하던 그 일이 된다.
  * 한글은 11px 글꼴에서 대략 정사각형이고 숫자·영문은 그 절반쯤이다.
  */
-const TICK_FONT = 11
+const TICK_FONT = 10
 const TICK_GAP = 12
 const MAX_TICKS = 12
 
@@ -511,7 +516,7 @@ function AxisName({ label, color, align }: { label: string; color?: string; alig
   return (
     <p
       className={cn(
-        "flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground",
+        "flex min-w-0 items-center gap-1.5 text-[10px] font-medium tracking-[0.06em] text-muted-foreground",
         align === "right" && "justify-end"
       )}
       title={label}
@@ -551,10 +556,16 @@ function AxisFrame({
   return (
     <div className="absolute inset-0 flex flex-col">
       {/*
-        값 축 이름은 플롯 **위**에 가로로. 축이 둘이면 왼쪽 이름은 왼쪽에, 오른쪽 이름은
-        오른쪽에 붙여 어느 축의 것인지 자리로 말한다(색 마크는 그 위에 한 번 더).
+        값 축 이름은 플롯 **위**에 가로로. 하나면 가운데 — 아래 X축 이름과 같은 자리라
+        둘이 위아래로 짝을 이룬다. **축이 둘일 때만 양 끝으로 벌린다**: 그때는 자리가
+        "어느 축의 이름인지"를 말하므로 가운데 모으면 그 구분이 사라진다.
       */}
-      <div className="mb-1 flex shrink-0 items-baseline justify-between gap-3">
+      <div
+        className={cn(
+          "mt-1.5 mb-2 flex shrink-0 items-baseline gap-3",
+          yRightLabel ? "justify-between" : "justify-center"
+        )}
+      >
         <AxisName label={yLabel} color={colors?.[0]} />
         {yRightLabel && <AxisName label={yRightLabel} color={colors?.[1]} align="right" />}
       </div>
@@ -574,7 +585,7 @@ function AxisFrame({
         </div>
       </div>
       <p
-        className="mt-1 shrink-0 truncate text-center text-[11px] text-muted-foreground"
+        className="mt-1.5 shrink-0 truncate text-center text-[10px] font-medium tracking-[0.06em] text-muted-foreground"
         title={xLabel}
       >
         {xLabel}
@@ -794,7 +805,7 @@ const SPOT_LABEL = {
   dataKey: SPOT,
   fill: "var(--foreground)",
   fontSize: 11,
-  fontWeight: 500,
+  fontWeight: 600,
 } as const
 
 function spotText(value: unknown): string {

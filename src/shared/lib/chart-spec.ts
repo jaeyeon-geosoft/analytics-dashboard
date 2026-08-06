@@ -100,7 +100,14 @@ export function withMapping(spec: ChartSpec, key: MappingKey, column?: string): 
  *
  * 내보낼 때 차트 제목으로도 쓴다 — 카드 머리와 뷰어가 같은 문장을 쓰게 하려고 export한다.
  */
-export function describeMapping(spec: ChartSpec): { axes: string; aside?: string } {
+export function describeMapping(spec: ChartSpec): {
+  axes: string
+  aside?: string
+  /** 무엇을 재는 차트인가 — 값(또는 Y축) 컬럼. 카드 제목이 된다. */
+  measure?: string
+  /** 무엇을 기준으로 갈랐나 — 범주(또는 X축) 컬럼. 제목 아래 줄로 간다. */
+  by?: string
+} {
   const slots = MAPPING_SLOTS[spec.chartType]
   const axes = slots
     .filter((slot) => slot.key !== "series" && slot.key !== "y2")
@@ -115,5 +122,17 @@ export function describeMapping(spec: ChartSpec): { axes: string; aside?: string
     hasSeries ? spec.mapping.series : undefined,
   ].filter(Boolean)
 
-  return { axes, aside: aside.length > 0 ? aside.join(" · ") : undefined }
+  /*
+    카드 머리줄의 위계를 위해 둘을 따로 낸다. 한 줄로 이어 붙인 `axes`는 카드가 좁아질 때
+    **앞에서부터** 잘려서, 정작 무엇을 재는 차트인지가 먼저 사라졌다.
+
+    슬롯 이름이 종류마다 다르다(막대는 `범주`/`값`, 선은 `X축`/`Y축`). 개수 집계는 값
+    컬럼이 없으므로 `measure`도 없다 — 그때는 카드가 "행 개수"를 제목으로 쓴다.
+  */
+  return {
+    axes,
+    aside: aside.length > 0 ? aside.join(" · ") : undefined,
+    measure: spec.mapping.value ?? spec.mapping.y,
+    by: spec.mapping.category ?? spec.mapping.x,
+  }
 }

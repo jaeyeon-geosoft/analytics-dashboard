@@ -92,9 +92,8 @@
 │      [+ 파일 열기]        │ └─────────────────────────┘ │
 │  ─ [n] 차트 n ─────       │                             │
 │  파일 · 시트 (둘 이상일 때)│                             │
-│  차트 종류 (8종 피커)      │                             │
+│  차트 종류 (8종 · 4열 2줄) │                             │
 │  매핑 + 집계 + 정렬 + 기준선│                            │
-│  ─ 데이터 취급 3줄 ─       │                             │
 └──────────────────────────┴─────────────────────────────┘
 ```
 
@@ -160,7 +159,11 @@ CSS Grid로 따로 그렸다. 칸 규격은 `shared/lib/dashboard.ts`에 있다:
 `GRID_COLS`(12) · `GRID_ROW_HEIGHT`(40px) · `GRID_MARGIN`(12px) · `GRID_MIN_W`(3) ·
 `GRID_MIN_H`(7). 한쪽만 바꾸면 같은 대시보드가 두 화면에서 다르게 배치된다.
 
-- 기본 칸: `w=6, h=8`(404px), 한 줄에 두 장.
+- 기본 칸: `w=6, h=8`(404px), 한 줄에 두 장. **단 카드가 한 장뿐이면 폭을 다 쓴다**
+  (`w=12, h=10`) — 절반짜리로 두면 파일을 처음 열었을 때 오른쪽 절반이 통째로 비고
+  폭을 다 쓰는 파일 바와 어긋난다. 이미 놓인 카드를 되돌려 줄이지는 않는다.
+- 새 카드의 열은 **지금까지 놓인 반폭 카드 수**로 정한다(`syncLayout`). 목록 인덱스로
+  세면 폭을 다 쓰는 카드가 한 자리를 먹어 다음 카드가 오른쪽 절반에 놓이고 왼쪽이 빈다.
 - 하한 `minW=3` · `minH=7`. 세로 하한은 눈대중이 아니라 **내용 높이에서 나온 수**다 —
   머리줄 ~55px + 플롯 `min-h-64`(256px) = 351px, 7칸 = 352px.
 - 세로 압축이 기본이라 카드를 아래로 끌어도 빈칸이 있으면 위로 당겨 올라온다.
@@ -185,8 +188,8 @@ eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `ro
 |---|---|
 | `src/admin/App.tsx` | 상태 보유(`AdminDataset[]`, `AdminChart[]`, **배치 `Layout`**, 여는 중 상태, 선택 카드), 파일·내보내기 핸들러 |
 | `src/admin/components/app-header.tsx` | 워드마크, 파일 열기, 테마 토글 |
-| `src/admin/components/settings-sidebar.tsx` | 파일 목록 아코디언(표마다 헤더 행·컬럼) / **선택된 카드**의 파일·시트·차트 종류·매핑·집계·정렬·기준선 / 데이터 취급 안내 |
-| `src/admin/components/chart-type-picker.tsx` | 8종 피커(막대/가로 막대/누적 막대/선/영역/산점도/궤적/원형) + 직접 그린 마크 글리프 |
+| `src/admin/components/settings-sidebar.tsx` | 파일 목록 아코디언(표마다 헤더 행·컬럼) / **선택된 카드**의 파일·시트·차트 종류·매핑·집계·정렬·기준선 |
+| `src/admin/components/chart-type-picker.tsx` | 8종 피커(막대/가로 막대/누적 막대/선/영역/산점도/궤적/원형), 4열 2줄 + 직접 그린 마크 글리프 |
 | `src/shared/lib/chart-types.ts` | `ChartType` 8종. 도메인 타입이라 피커가 아니라 여기 있다 |
 | `src/shared/lib/dataset.ts` | `DataFrame`(`columns`+`rows`) — 렌더러가 먹는 최소 형태. 어드민의 `ParsedFile`이 그대로 대입되고, 뷰어는 API 응답에서 이 모양만 만들면 된다 |
 | `src/admin/lib/canvas-state.ts` | 어드민 상태 모델 — `AdminDataset`(**표 하나** = 파일+시트: 원본 참조·파싱 결과·그 표의 컬럼, 같은 파일은 `fileId` 공유), `AdminChart`(`{spec, datasetId}`), `OpenState`(파일을 읽는 동안만), `datasetLabel()` |
@@ -206,7 +209,7 @@ eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `ro
 | `src/shared/components/data-table.tsx` | 차트와 같은 집계 결과의 표 보기 (보이는 행만 그린다) |
 | `src/shared/lib/dashboard.ts` | **계약.** `Dashboard` 타입, `parseDashboard()` 검증기, 그리드 규격 상수 |
 | `src/admin/lib/export-dashboard.ts` | 지금 어드민 상태 → `Dashboard` → JSON 다운로드. 어느 카드도 안 보는 파일은 담지 않는다. **나중에 여기가 POST** |
-| `src/admin/lib/chart-layout.ts` | 새 카드의 기본 칸, 하한(`minW`/`minH`), 카드↔배치 맞추기(`syncLayout`) |
+| `src/admin/lib/chart-layout.ts` | 새 카드의 기본 칸(1장이면 전체 폭), 하한(`minW`/`minH`), 카드↔배치 맞추기(`syncLayout`) |
 | `src/shared/grid.css` | rgl 기본 CSS 덮어쓰기 (자리표시·크기 손잡이). 양쪽 `main.tsx`가 불러온다 |
 | `src/shared/components/chart-grid.tsx` | 격자 — 칸 규격과 끌기 규칙. **양쪽이 쓴다**, 뷰어만 `locked` |
 | `src/viewer/viewer-app.tsx` | 뷰어 화면 — 빈 상태 / 실패 이유 / 대시보드. 지금 배치와 잠금을 든다 |
@@ -363,6 +366,9 @@ CSV든 Excel이든 **행 배열(`string[][]`)로 읽은 뒤 `shape()`가 헤더�
 - **막대의 값 라벨은 막대마다 붙는다.** 칸 폭이 글자보다 좁으면 최대값 하나로 물러나고
   (`everyBar`), **물러났다는 것을 카드 머리줄에 적는다.** 선·영역은 여전히 최신값 한 점,
   시리즈가 여럿이면 어느 쪽도 안 붙인다.
+- **차트 안 글자는 세 층이다** — 값 라벨(11px, 굵게, 텍스트 색) > 축 이름(10px, 자간
+  넓게, muted) > 눈금(10px, muted). 셋이 같은 크기·색이면 축 이름이 눈금 사이에 떠 있는
+  글자로 보인다.
 - **값 축 이름은 플롯 위에 가로로 놓는다.** 세워 놓으면 한글이 세로쓰기로 쌓이거나
   (책등 조판) 줄을 돌린 만큼 글자가 뒤집힌다. 축이 둘이면 왼쪽·오른쪽 끝에 나눠 붙이고
   선 색 마크를 앞에 둔다.

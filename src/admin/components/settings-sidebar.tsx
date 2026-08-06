@@ -785,23 +785,6 @@ export function SettingsSidebar({
           )}
         </div>
       </ScrollArea>
-
-      <div className="border-t border-border p-4">
-        {/*
-          예전엔 "밖으로 나가지 않는다"고 약속했지만 내보내기가 생기면서 거짓이 됐다.
-          특히 셋째 줄 — 내보내는 JSON에는 설정만이 아니라 **데이터 행이 통째로**
-          들어간다. 설정만 나가는 줄 알고 공유하면 그게 유출이다.
-        */}
-        <SectionLabel>데이터 취급</SectionLabel>
-        <ul className="space-y-1 border-l border-border pl-3 text-[11px] leading-relaxed text-muted-foreground">
-          <li>파싱·집계는 이 브라우저 안에서 합니다.</li>
-          <li>새로고침하면 초기화됩니다.</li>
-          <li>
-            <span className="text-foreground">내보내면 데이터 행까지 함께 나갑니다</span> —
-            차트 설정만이 아닙니다.
-          </li>
-        </ul>
-      </div>
     </aside>
   )
 }
