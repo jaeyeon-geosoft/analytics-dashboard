@@ -93,13 +93,13 @@
 │  ─ [n] 차트 n ─────       │                             │
 │  파일 · 시트 (둘 이상일 때)│                             │
 │  차트 종류 (8종 피커)      │                             │
-│  매핑 + 집계 + 기준선      │                             │
+│  매핑 + 집계 + 정렬 + 기준선│                            │
 │  ─ 데이터 취급 3줄 ─       │                             │
 └──────────────────────────┴─────────────────────────────┘
 ```
 
 **사이드바는 두 층이다** — 위는 **열어둔 표들**(표마다 헤더 행·컬럼 타입), 아래는
-**선택된 카드 하나**의 설정(파일·시트·차트 종류·매핑·집계·기준선). 표에 딸린 것을 표 안에
+**선택된 카드 하나**의 설정(파일·시트·차트 종류·매핑·집계·정렬·기준선). 표에 딸린 것을 표 안에
 넣지 않으면 파일이 둘일 때 "이 컬럼이 어느 파일 것인지"가 화면에서 사라진다.
 
 - **파일 줄의 번호 배지가 그 파일을 쓰는 카드다.** 배지 모양은 사이드바 머리줄·캔버스
@@ -185,14 +185,14 @@ eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `ro
 |---|---|
 | `src/admin/App.tsx` | 상태 보유(`AdminDataset[]`, `AdminChart[]`, **배치 `Layout`**, 여는 중 상태, 선택 카드), 파일·내보내기 핸들러 |
 | `src/admin/components/app-header.tsx` | 워드마크, 파일 열기, 테마 토글 |
-| `src/admin/components/settings-sidebar.tsx` | 파일 목록 아코디언(표마다 헤더 행·컬럼) / **선택된 카드**의 파일·시트·차트 종류·매핑·집계·기준선 / 데이터 취급 안내 |
+| `src/admin/components/settings-sidebar.tsx` | 파일 목록 아코디언(표마다 헤더 행·컬럼) / **선택된 카드**의 파일·시트·차트 종류·매핑·집계·정렬·기준선 / 데이터 취급 안내 |
 | `src/admin/components/chart-type-picker.tsx` | 8종 피커(막대/가로 막대/누적 막대/선/영역/산점도/궤적/원형) + 직접 그린 마크 글리프 |
 | `src/shared/lib/chart-types.ts` | `ChartType` 8종. 도메인 타입이라 피커가 아니라 여기 있다 |
 | `src/shared/lib/dataset.ts` | `DataFrame`(`columns`+`rows`) — 렌더러가 먹는 최소 형태. 어드민의 `ParsedFile`이 그대로 대입되고, 뷰어는 API 응답에서 이 모양만 만들면 된다 |
 | `src/admin/lib/canvas-state.ts` | 어드민 상태 모델 — `AdminDataset`(**표 하나** = 파일+시트: 원본 참조·파싱 결과·그 표의 컬럼, 같은 파일은 `fileId` 공유), `AdminChart`(`{spec, datasetId}`), `OpenState`(파일을 읽는 동안만), `datasetLabel()` |
-| `src/shared/lib/chart-spec.ts` | `ChartSpec`(종류·매핑·집계·기준선), `createChart()`·`duplicateChart()`, **명세를 고치는 규칙**(`withChartType`·`withColumns`·`withMapping`), 상한 `MAX_CHARTS` |
+| `src/shared/lib/chart-spec.ts` | `ChartSpec`(종류·매핑·집계·정렬·기준선 — `order`는 optional, 없으면 파일 순서), `createChart()`·`duplicateChart()`, **명세를 고치는 규칙**(`withChartType`·`withColumns`·`withMapping`), 상한 `MAX_CHARTS` |
 | `src/admin/components/chart-canvas.tsx` | 캔버스 4개 상태 + `DatasetBar` + `CanvasGrid`(카드↔배치 맞추기) |
-| `src/shared/components/chart-card.tsx` | 카드 한 장 — 계산 지연(`useDeferredPlot`), 차트↔표 토글, 카드 단위 경고 |
+| `src/shared/components/chart-card.tsx` | 카드 한 장 — 계산 지연(`useDeferredPlot`), 차트↔표 토글, 카드 단위 경고(값 라벨이 접혔다는 알림도 여기) |
 | `src/admin/components/file-dropzone.tsx` | 드래그&드롭 + 파일 선택 |
 | `src/shared/components/theme-toggle.tsx` | 라이트/다크 (`localStorage`, 데이터 아님) |
 | `src/admin/lib/file-constraints.ts` | 확장자 목록, 크기 상한(50MB), `validateFile()` |
@@ -202,7 +202,7 @@ eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `ro
 | `src/shared/lib/mapping-slots.ts` | 슬롯 정의, 후보 필터, 자동 채움, 무효 선택 정리, 슬롯 잠금 |
 | `src/shared/lib/aggregate.ts` | 집계(합계/평균/개수) + 차트가 먹을 모양으로 변환. 진입점은 `buildPlot()` 하나 |
 | `src/admin/lib/derive-column.ts` | 직전 행과의 시차(초) 컬럼 만들기. **파생 값은 여기 하나뿐** |
-| `src/shared/components/chart-view.tsx` | Recharts 렌더러 — `TimelineView`(선·영역) / `BarView`(막대 3종) / `PieView` / `ScatterView`. 값 축 범위(`valueDomain`)와 눈금 자릿수(`compact`)도 여기 |
+| `src/shared/components/chart-view.tsx` | Recharts 렌더러 — `TimelineView`(선·영역) / `BarView`(막대 3종) / `PieView` / `ScatterView`. 값 축 범위(`valueDomain`)·눈금 자릿수(`compact`)·막대 값 라벨 접기(`everyBar`)·축 이름(`AxisFrame`, 플롯 위 가로)도 여기 |
 | `src/shared/components/data-table.tsx` | 차트와 같은 집계 결과의 표 보기 (보이는 행만 그린다) |
 | `src/shared/lib/dashboard.ts` | **계약.** `Dashboard` 타입, `parseDashboard()` 검증기, 그리드 규격 상수 |
 | `src/admin/lib/export-dashboard.ts` | 지금 어드민 상태 → `Dashboard` → JSON 다운로드. 어느 카드도 안 보는 파일은 담지 않는다. **나중에 여기가 POST** |
@@ -360,8 +360,12 @@ CSV든 Excel이든 **행 배열(`string[][]`)로 읽은 뒤 `shape()`가 헤더�
   하지만 기준선은 읽으라고 있는 주석이라 다르다 — 회색으로 두면 채도 높은 막대 위에서
   묻힌다. 값은 **선이 아니라 축 이름에** 적는다(`· ┄ 평균 4.53`) — 선 위에 붙이면 값
   직접 라벨과 자리를 다툰다. 가로 막대는 축이 뒤집혀 있어 기준선도 이름도 반대쪽이다.
-- **막대의 값 라벨은 막대마다 붙는다.** 칸 폭이 글자보다 좁으면 최대값 하나로 물러난다
-  (`everyBar`). 선·영역은 여전히 최신값 한 점, 시리즈가 여럿이면 어느 쪽도 안 붙인다.
+- **막대의 값 라벨은 막대마다 붙는다.** 칸 폭이 글자보다 좁으면 최대값 하나로 물러나고
+  (`everyBar`), **물러났다는 것을 카드 머리줄에 적는다.** 선·영역은 여전히 최신값 한 점,
+  시리즈가 여럿이면 어느 쪽도 안 붙인다.
+- **값 축 이름은 플롯 위에 가로로 놓는다.** 세워 놓으면 한글이 세로쓰기로 쌓이거나
+  (책등 조판) 줄을 돌린 만큼 글자가 뒤집힌다. 축이 둘이면 왼쪽·오른쪽 끝에 나눠 붙이고
+  선 색 마크를 앞에 둔다.
 - **상한:** 원형 조각 6개(나머지는 "기타"), 산점도 점 3,000개. 둘 다 화면에 알린다.
 - **"그리는 중" 표시는 산점도에만.** 무거운 계산과 `표 → 차트` 전환 두 곳이고, 띄울지는
   시작 전에 정한다(`looksSlow`). 나머지는 창으로 줄어 띄울 만큼 느리지 않다.
