@@ -1,5 +1,5 @@
 import type { ChartType } from "@/shared/lib/chart-types"
-import type { Aggregation, Reference } from "@/shared/lib/aggregate"
+import type { Aggregation, CategoryOrder, Reference } from "@/shared/lib/aggregate"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
 import {
   fillMapping,
@@ -25,6 +25,12 @@ export type ChartSpec = {
   mapping: Mapping
   aggregation: Aggregation
   reference: Reference
+  /**
+   * 범주 축 정렬. **없으면 파일 순서**로 읽는다 — 이 필드가 생기기 전에 저장된
+   * 대시보드가 그대로 열려야 한다(그때는 값 큰 순이었으므로 모양이 바뀐다. 순서가
+   * 의미인 범주를 되살리는 것이 이 필드를 넣은 이유다).
+   */
+  order?: CategoryOrder
 }
 
 // 세션 안에서만 겹치지 않으면 된다. 번호가 그대로 드러나 디버깅도 쉽다.
@@ -38,6 +44,7 @@ export function createChart(columns: ColumnInfo[], chartType: ChartType = "bar")
     mapping: fillMapping({}, chartType, columns),
     aggregation: "sum",
     reference: "none",
+    order: "file",
   }
 }
 

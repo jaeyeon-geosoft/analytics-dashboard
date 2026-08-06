@@ -188,10 +188,21 @@ export function ChartCard({
   onRemove?: () => void
 }) {
   const { chartType, mapping, aggregation, reference } = spec
+  // 이 필드가 생기기 전에 저장된 대시보드에는 없다. 기본은 파일 순서다.
+  // 이름이 `categoryOrder`인 것은 위의 `order`(그리드 순번)와 다른 것이기 때문이다.
+  const categoryOrder = spec.order ?? "file"
 
   const request = useMemo(
-    () => ({ chartType, mapping, aggregation, reference, columns, rows: data.rows }),
-    [chartType, mapping, aggregation, reference, columns, data.rows]
+    () => ({
+      chartType,
+      mapping,
+      aggregation,
+      reference,
+      order: categoryOrder,
+      columns,
+      rows: data.rows,
+    }),
+    [chartType, mapping, aggregation, reference, categoryOrder, columns, data.rows]
   )
   const slow = looksSlow(chartType, data.rows.length)
   const { plot, pending } = useDeferredPlot(request, order)

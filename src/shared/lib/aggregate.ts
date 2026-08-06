@@ -29,6 +29,25 @@ export const OTHER_LABEL = "기타"
  */
 export type Reference = "none" | "mean" | "median"
 
+/**
+ * 범주 축을 어떤 순서로 세울지.
+ *
+ * 기본이 `file`인 것은 **순서가 곧 의미인 범주가 흔하기 때문**이다 — 시간대(`07:00`),
+ * 구간(`200~250ms`), 등급, 퍼널 단계는 타입이 범주로 잡히지만 값 큰 순으로 세우면
+ * 축이 거짓말을 한다(실제로 시간대 막대가 07·05·08시 순으로 나왔다). 파일에 있는
+ * 순서는 분석가가 이미 뜻을 담아 정렬해 둔 것이라 그대로 두는 쪽이 덜 놀랍다.
+ *
+ * 순서가 없는 범주(제품명·지역)에서 순위를 보려면 `value`로 바꾼다.
+ * **날짜·숫자 축과 시계열에는 해당하지 않는다** — 거기서는 축 자체가 순서다.
+ */
+export type CategoryOrder = "file" | "value" | "name"
+
+export const ORDER_LABELS: Record<CategoryOrder, string> = {
+  file: "파일 순서",
+  value: "값 큰 순",
+  name: "이름순",
+}
+
 export const REFERENCE_LABELS: Record<Reference, string> = {
   none: "없음",
   mean: "평균",
@@ -174,8 +193,8 @@ function reduce(values: number[], aggregation: Aggregation, count: number): numb
 /**
  * 범주(또는 X축)로 묶어 값을 집계한다. 분할 컬럼이 있으면 시리즈로 나눈다.
  *
- * 정렬은 축이 순서를 가졌느냐로 갈린다 — 날짜·숫자는 그 순서대로, 순서 없는 범주만
- * 값 큰 순으로. 순서를 뒤섞으면 추이가 거짓말이 된다.
+ * 날짜·숫자 축과 시계열은 축 자체가 순서라 그 순서대로 세운다. 순서 없는 범주만
+ * `order`를 따른다(기본은 파일 순서). 순서를 뒤섞으면 추이가 거짓말이 된다.
  */
 function buildChartFrame(
   chartType: ChartType,
@@ -183,7 +202,8 @@ function buildChartFrame(
   aggregation: Aggregation,
   columns: ColumnInfo[],
   rows: Record<string, string>[],
-  reference: Reference = "none"
+  reference: Reference = "none",
+  order: CategoryOrder = "file"
 ): ChartFrame | null {
   const mapping = activeMapping(chartType, rawMapping)
   const orderedByX = chartType === "line" || chartType === "area"
@@ -262,17 +282,22 @@ function buildChartFrame(
   })
 
   /*
-    정렬은 축이 **순서를 가진 것이냐**로 갈린다.
+    정렬.
 
-    날짜·숫자는 그 자체로 순서가 있다. 값 큰 순으로 세우면 10월 16일이 10월 3일보다
-    앞에 오는 식이 되어 축이 거짓말을 한다(실제로 시계열 막대가 시간 역순으로 나왔다).
-    순서가 없는 범주(제품명·지역)만 값 큰 순으로 세운다 — 그때는 순위가 곧 차트의 일이다.
+    **날짜·숫자 축과 시계열은 축 자체가 순서다.** 값 큰 순으로 세우면 10월 16일이
+    10월 3일보다 앞에 오는 식이 되어 축이 거짓말을 한다(실제로 시계열 막대가 시간
+    역순으로 나왔다). 여기서는 고른 정렬을 보지 않는다.
+
+    나머지 범주 축만 `order`를 따른다. 기본은 파일 순서 — `entries`가 이미 처음
+    나온 순서이므로 **아무것도 하지 않는 것**이 파일 순서다.
   */
   const xType = columns.find((column) => column.name === xColumn)?.type
   if (orderedByX || xType === "date" || xType === "number") {
     entries.sort((a, b) => compareX(String(a.row.x), String(b.row.x), xType))
-  } else {
+  } else if (order === "value") {
     entries.sort((a, b) => b.total - a.total)
+  } else if (order === "name") {
+    entries.sort((a, b) => String(a.row.x).localeCompare(String(b.row.x)))
   }
 
   // 범주는 자르지 않는다. 몇 개든 전부 그린다 — 잘라내면 분석가가 찾는 값이
@@ -281,8 +306,18 @@ function buildChartFrame(
   if (chartType === "pie" && entries.length > MAX_SLICES) {
     // 원형만은 접는다. 조각을 잘라내면 합이 100%가 아니게 되고, 조각이 많으면
     // 각도로 순위를 가릴 수 없어 애초에 원형으로 볼 수 없는 데이터다.
-    const kept = entries.slice(0, MAX_SLICES - 1)
-    const rest = entries.slice(MAX_SLICES - 1)
+    //
+    // **접는 기준은 언제나 값이다.** 정렬이 파일 순서면 뒤에 있다는 이유로 큰 조각이
+    // 접힐 수 있는데, 그러면 "기타"가 제일 큰 조각이 되어 원형을 볼 이유가 사라진다.
+    // 남길 것만 값으로 고르고, 세우는 순서는 위에서 정한 그대로 둔다.
+    const small = new Set(
+      [...entries]
+        .sort((a, b) => b.total - a.total)
+        .slice(MAX_SLICES - 1)
+        .map((entry) => entry.row.x)
+    )
+    const kept = entries.filter((entry) => !small.has(entry.row.x))
+    const rest = entries.filter((entry) => small.has(entry.row.x))
     const otherRow: Record<string, string | number> = { x: OTHER_LABEL }
     for (const { key } of series) {
       otherRow[key] = rest.reduce((sum, entry) => sum + Number(entry.row[key] ?? 0), 0)
@@ -375,6 +410,8 @@ export type PlotRequest = {
   mapping: Mapping
   aggregation: Aggregation
   reference: Reference
+  /** 범주 축 정렬. 날짜·숫자 축과 시계열에는 쓰이지 않는다. */
+  order: CategoryOrder
   columns: ColumnInfo[]
   rows: Record<string, string>[]
 }
@@ -398,7 +435,7 @@ export type PlotData =
  * 읽는 쪽에서 한 번 걸러야 한다.
  */
 export function buildPlot(request: PlotRequest): PlotData | null {
-  const { chartType, mapping, aggregation, reference, columns, rows } = request
+  const { chartType, mapping, aggregation, reference, order, columns, rows } = request
 
   if (isPointChart(chartType)) {
     const frame = buildScatterFrame(mapping, rows)
@@ -406,6 +443,6 @@ export function buildPlot(request: PlotRequest): PlotData | null {
   }
 
   const wanted = allowsReference(chartType) ? reference : "none"
-  const frame = buildChartFrame(chartType, mapping, aggregation, columns, rows, wanted)
+  const frame = buildChartFrame(chartType, mapping, aggregation, columns, rows, wanted, order)
   return frame && { kind: "cartesian", frame }
 }

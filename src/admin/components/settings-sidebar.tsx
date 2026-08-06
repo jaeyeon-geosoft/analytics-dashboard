@@ -23,8 +23,10 @@ import { ChartTypePicker } from "@/admin/components/chart-type-picker"
 import { ColumnList } from "@/admin/components/column-list"
 import {
   AGGREGATION_LABELS,
+  ORDER_LABELS,
   REFERENCE_LABELS,
   type Aggregation,
+  type CategoryOrder,
   type Reference,
 } from "@/shared/lib/aggregate"
 import { datasetLabel, type AdminChart, type AdminDataset } from "@/admin/lib/canvas-state"
@@ -42,6 +44,7 @@ import {
   MAPPING_SLOTS,
   allowsReference,
   candidatesFor,
+  isTimeline,
   lockedReason,
   type MappingSlot,
   usesAggregation,
@@ -91,10 +94,13 @@ function Hint({ children }: { children: React.ReactNode }) {
 }
 
 /** 슬롯 설명을 한 곳에 모은 표. 아이콘을 컨트롤마다 두면 그게 더 어수선하다. */
-function MappingGuide({ chartType }: { chartType: ChartType }) {
+function MappingGuide({ chartType, sortable }: { chartType: ChartType; sortable: boolean }) {
   const rows = MAPPING_SLOTS[chartType].map((slot) => [slot.label, slot.hint] as const)
   if (usesAggregation(chartType)) {
     rows.push(["집계", "같은 범주가 여러 줄일 때 합칠 방법"])
+  }
+  if (sortable) {
+    rows.push(["정렬", "범주를 세우는 순서. 기본은 파일에 있는 그대로입니다"])
   }
 
   return (
@@ -507,6 +513,16 @@ function ChartSettings({
 }) {
   const { chartType, mapping, aggregation, reference } = chart
 
+  /*
+    정렬을 고를 수 있는 차트인가.
+
+    범주 축을 세우는 종류(막대 3종·원형)이면서 그 컬럼이 **범주**일 때만이다. 날짜·숫자
+    축과 시계열(선·영역)은 축 자체가 순서라 정렬이 끼어들 자리가 없고, 산점도·궤적은
+    범주로 묶지도 않는다.
+  */
+  const categoryType = columns.find((column) => column.name === mapping.category)?.type
+  const sortable = usesAggregation(chartType) && !isTimeline(chartType) && categoryType === "category"
+
   // 파일 단위로 접는다 — 같은 파일의 시트 둘은 데이터셋이 둘이지만 파일은 하나다.
   const files = datasets.filter(
     (entry, index) => datasets.findIndex((other) => other.fileId === entry.fileId) === index
@@ -580,7 +596,9 @@ function ChartSettings({
       </section>
 
       <section>
-        <SectionLabel hint={<MappingGuide chartType={chartType} />}>매핑</SectionLabel>
+        <SectionLabel hint={<MappingGuide chartType={chartType} sortable={sortable} />}>
+          매핑
+        </SectionLabel>
         <div className="space-y-2">
           {MAPPING_SLOTS[chartType].map((slot) => (
             <MappingSelect
@@ -600,6 +618,19 @@ function ChartSettings({
               value={aggregation}
               labels={AGGREGATION_LABELS}
               onValueChange={(next) => onChartChange({ ...chart, aggregation: next })}
+            />
+          )}
+          {/*
+            정렬은 **범주 축일 때만** 내놓는다. 날짜·숫자 축과 시계열은 축 자체가
+            순서라 고를 것이 없다 — 빈 선택지를 늘어놓지 않는다.
+          */}
+          {sortable && (
+            <ChoiceRow<CategoryOrder>
+              id="order"
+              label="정렬"
+              value={chart.order ?? "file"}
+              labels={ORDER_LABELS}
+              onValueChange={(next) => onChartChange({ ...chart, order: next })}
             />
           )}
           {allowsReference(chartType) && (
