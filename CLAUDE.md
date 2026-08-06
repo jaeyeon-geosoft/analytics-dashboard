@@ -3,7 +3,7 @@
 데이터 분석가가 만든 데이터를 **차트로 시각화하는 도구**. 화면이 둘이다:
 
 - **어드민** — 분석가가 CSV/Excel을 올리고, 컬럼 타입을 고치고, 차트 종류·매핑·집계를 설정한 뒤 **저장(API)** 한다.
-- **뷰어** — 저장된 차트를 API로 받아 **설정한 그대로 보여주기만** 한다. 설정 UI 없음.
+- **뷰어** — 저장된 차트를 API로 받아 **설정한 그대로 보여주기만** 한다. 차트 설정 UI 없음. 단 **배치는 보는 사람이 임시로 바꿀 수 있다** — 잠긴 채로 열리고, 풀어서 옮긴 배치는 **어디에도 저장하지 않는다**(새로고침하면 저장된 배치로 돌아온다).
 
 **사용자:** 어드민은 데이터 분석가, 뷰어는 그 차트를 보는 사람들.
 
@@ -47,9 +47,9 @@ src/
 - **`shared/`는 `admin/`·`viewer/` 어느 쪽도 import하지 않는다.** 방향이 거꾸로다. eslint가 막는다.
 - **`admin/`과 `viewer/`는 서로 import하지 않는다.** 양쪽이 필요하면 `shared/`로 올린다.
 - **Vite `root`가 앱 폴더다**(`src/admin` / `src/viewer`). 진입 HTML은 자기 앱 폴더 안에 `index.html`로 있고 `./main.tsx`를 가리킨다. dev 서버가 **그 앱 하나만** 연다 — 어드민 서버에서 뷰어는 안 보인다. 포트는 5173(어드민) / 5174(뷰어)로 못 박혀 있다(`strictPort`).
-- 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(2026-08-05 확인: 어드민 911KB + xlsx 493KB → 뷰어 734KB). **차이가 크지 않은 것은 Recharts가 양쪽을 다 차지하기 때문이다** — 갈라놓는 값어치는 크기보다 "뷰어에 파서가 아예 없다"는 데 있다.
+- 빌드도 따로 나온다 — `dist-admin/index.html` · `dist-viewer/index.html`. **둘 다 `index.html`이라** Vercel에 Project 2개(Build Command·Output Directory만 다르게)로 그대로 붙고 rewrite가 필요 없다. 뷰어 번들에는 파서(papaparse·SheetJS)와 사이드바가 들어가지 않는다(2026-08-06 확인: 어드민 912KB + xlsx 493KB → 뷰어 802KB. 뷰어에서도 카드를 옮기게 되면서 `react-grid-layout`이 양쪽에 들어가 68KB 늘었다). **차이가 크지 않은 것은 Recharts가 양쪽을 다 차지하기 때문이다** — 갈라놓는 값어치는 크기보다 "뷰어에 파서가 아예 없다"는 데 있다.
 - **`src/shared/index.css`의 `@source "../shared"`를 지우지 말 것.** Tailwind는 Vite의 `root`만 자동 스캔하는데 `shared/`가 그 바깥이라, 빼면 shared에만 있는 클래스가 빌드 CSS에서 통째로 빠진다 — 실제로 `h-7`·`border-separate`가 빠져 표가 깨졌다. 앱 폴더를 더 만들면 여기도 같이 볼 것.
-- CSS도 앱별로 갈린다(어드민 115KB / 뷰어 104KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다. 덩치의 대부분은 Pretendard 동적 서브셋의 `@font-face` 92벌이라 양쪽 공통이고, 앱별 차이는 여전히 10KB 남짓이다.
+- CSS도 앱별로 갈린다(어드민 115KB / 뷰어 109KB) — 뷰어에는 사이드바 폭(`lg:w-72`) 같은 어드민 전용 클래스가 없다. 덩치의 대부분은 Pretendard 동적 서브셋의 `@font-face` 92벌이라 양쪽 공통이고, 앱별 차이는 여전히 10KB 남짓이다.
 - **`cacheDir`도 앱별로 갈라놨다. 지우지 말 것.** 기본값이면 둘 다 루트의 `node_modules/.vite`를 쓰는데, 설정이 서로 달라서 한쪽을 띄울 때마다 다른 쪽 캐시를 지우고 다시 만든다. 그러면 켜둔 탭이 들고 있던 `?v=` 해시가 사라져 **동적 import가 404로 죽는다** — 실제로 엑셀을 열 때 `Failed to fetch dynamically imported module: …/deps/xlsx.js?v=…`로 터졌다. SheetJS만 터지는 건 그것만 동적 import라 파일을 여는 순간 받아오기 때문이다(CSV는 papaparse가 정적이라 멀쩡하다).
 - `apps/*` + `packages/*` + workspace로 가는 것은 **뷰어 전용 의존성이 생기거나, 세 번째 앱이 생기거나, 빌드 시간이 아파질 때.** 그때 `src/shared/`를 통째로 옮기면 되므로 미리 하지 않는다.
 
@@ -157,9 +157,13 @@ npm run preview         # dist-admin/ 미리보기 (뷰어는 preview:viewer)
   가리킨다. 같은 파일을 보는 차트 3장에 10만 행이 3벌 들어가면 안 된다.
 - **`columns`(타입 추론 결과)를 데이터와 함께 보낼 것.** 뷰어에서 다시 추론하면
   사용자가 어드민에서 고친 타입이 날아가 다른 차트가 나온다(절대 원칙 1).
-- **그리드 규격(`GRID_COLS`·`GRID_ROW_HEIGHT`·`GRID_MARGIN`)은 shared에 두고 양쪽이
-  같은 값을 볼 것.** `layout`이 칸 단위라 한쪽만 바꾸면 같은 대시보드가 두 화면에서
-  다르게 배치된다. 바꾸면 `DASHBOARD_FORMAT`을 올린다.
+- **그리드 규격(`GRID_COLS`·`GRID_ROW_HEIGHT`·`GRID_MARGIN`·`GRID_MIN_W`·`GRID_MIN_H`)은
+  shared에 두고 양쪽이 같은 값을 볼 것.** `layout`이 칸 단위라 한쪽만 바꾸면 같은
+  대시보드가 두 화면에서 다르게 배치된다. 칸 규격을 바꾸면 `DASHBOARD_FORMAT`을 올린다
+  (하한은 저장되는 값이 아니라 계약 밖이다).
+- **격자 자체도 양쪽이 같은 컴포넌트다**(`shared/components/chart-grid.tsx`). 양쪽 다
+  끌어 옮기고 크기를 바꿀 수 있으니 규격을 두 벌 둘 이유가 없다 — 뷰어는 `locked`만
+  다르게 준다.
 - 데이터를 가져오는 자리는 뷰어의 `loadDashboardFile()` **하나뿐**이다. API가 붙으면
   이 함수 안이 `fetch`로 바뀌고 바깥은 그대로다. 다른 곳에서 직접 불러오지 말 것.
 

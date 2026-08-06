@@ -1,11 +1,12 @@
 import { AlertTriangle, Download, Plus } from "lucide-react"
-import GridLayout, { useContainerWidth, type Layout } from "react-grid-layout"
+import { type Layout } from "react-grid-layout"
 
 import { Alert, AlertDescription, AlertTitle } from "@/shared/components/ui/alert"
 import { Button } from "@/shared/components/ui/button"
 import { Skeleton } from "@/shared/components/ui/skeleton"
 import { FileDropzone } from "@/admin/components/file-dropzone"
 import { ChartCard } from "@/shared/components/chart-card"
+import { ChartGrid } from "@/shared/components/chart-grid"
 import {
   datasetLabel,
   type AdminChart,
@@ -14,7 +15,6 @@ import {
 } from "@/admin/lib/canvas-state"
 import { MAX_CHARTS } from "@/shared/lib/chart-spec"
 import { syncLayout } from "@/admin/lib/chart-layout"
-import { GRID_COLS, GRID_MARGIN, GRID_ROW_HEIGHT } from "@/shared/lib/dashboard"
 import { MAX_ROWS } from "@/admin/lib/parse-file"
 
 function CanvasFrame({ title, children }: { title?: React.ReactNode; children: React.ReactNode }) {
@@ -133,7 +133,7 @@ export function ChartCanvas({
         진동하지 않는다 — 진동하면 재측정이 되먹임에 빠진다(CLAUDE.md).
       */}
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-        <ChartGrid
+        <CanvasGrid
           charts={charts}
           datasets={datasets}
           layout={layout}
@@ -149,10 +149,10 @@ export function ChartCanvas({
 }
 
 /**
- * 카드를 끌어 옮기고 크기를 늘리는 격자. 여기서 정한 배치가 그대로 내보내지고
- * 뷰어가 같은 자리에 그린다 — 그래서 칸 규격(`GRID_*`)을 shared에서 가져온다.
+ * 캔버스에 놓이는 카드들. 격자 자체는 shared의 `ChartGrid`가 맡고(뷰어와 같은 것),
+ * 여기서는 카드와 배치를 맞춰 넘기는 일만 한다.
  */
-function ChartGrid({
+function CanvasGrid({
   charts,
   datasets,
   layout,
@@ -171,7 +171,6 @@ function ChartGrid({
   onSelectChart: (id: string) => void
   onRemoveChart: (id: string) => void
 }) {
-  const { width, containerRef, mounted } = useContainerWidth()
   const byId = new Map(datasets.map((dataset) => [dataset.id, dataset]))
   // 파일을 지우면 그 파일을 보던 카드도 함께 지워지므로 짝은 항상 있다. 타입을 좁히려고
   // 한 번 거르고, 거른 결과로 배치를 맞춘다 — 둘이 어긋나면 rgl이 빈 자리를 남긴다.
@@ -183,40 +182,23 @@ function ChartGrid({
   const settled = syncLayout(cards.map(({ chart }) => chart.spec.id), layout)
 
   return (
-    <div ref={containerRef}>
-      {mounted && (
-        <GridLayout
-          width={width}
-          layout={settled}
-          onLayoutChange={onLayoutChange}
-          gridConfig={{
-            cols: GRID_COLS,
-            rowHeight: GRID_ROW_HEIGHT,
-            margin: [GRID_MARGIN, GRID_MARGIN],
-            containerPadding: [0, 0],
-          }}
-          // 카드 안의 버튼·토글을 누르는 것은 드래그가 아니다. 차트 위를 끄는 것은
-          // 드래그가 맞다 — Recharts의 크로스헤어는 버튼을 누르지 않은 이동에만 반응한다.
-          dragConfig={{ cancel: "button,[role=radiogroup]" }}
-        >
-          {cards.map(({ chart, dataset }, index) => (
-            // `grid`라 안의 카드가 rgl이 정해준 칸을 그대로 채운다.
-            <div key={chart.spec.id} className="grid">
-              <ChartCard
-                spec={chart.spec}
-                number={index + 1}
-                order={index}
-                data={dataset.data}
-                columns={dataset.columns}
-                selected={chart.spec.id === activeId}
-                onSelect={() => onSelectChart(chart.spec.id)}
-                onRemove={single ? undefined : () => onRemoveChart(chart.spec.id)}
-              />
-            </div>
-          ))}
-        </GridLayout>
-      )}
-    </div>
+    <ChartGrid layout={settled} onLayoutChange={onLayoutChange}>
+      {cards.map(({ chart, dataset }, index) => (
+        // `grid`라 안의 카드가 rgl이 정해준 칸을 그대로 채운다.
+        <div key={chart.spec.id} className="grid">
+          <ChartCard
+            spec={chart.spec}
+            number={index + 1}
+            order={index}
+            data={dataset.data}
+            columns={dataset.columns}
+            selected={chart.spec.id === activeId}
+            onSelect={() => onSelectChart(chart.spec.id)}
+            onRemove={single ? undefined : () => onRemoveChart(chart.spec.id)}
+          />
+        </div>
+      ))}
+    </ChartGrid>
   )
 }
 

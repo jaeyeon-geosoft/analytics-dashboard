@@ -1,40 +1,44 @@
+import type { Layout } from "react-grid-layout"
+
 import { ChartCard } from "@/shared/components/chart-card"
-import { GRID_COLS, GRID_MARGIN, GRID_ROW_HEIGHT, type Dashboard } from "@/shared/lib/dashboard"
+import { ChartGrid } from "@/shared/components/chart-grid"
+import { GRID_MARGIN, type Dashboard } from "@/shared/lib/dashboard"
 
 /**
- * 저장된 배치를 그대로 그린다. 뷰어는 끌지도 늘리지도 않으므로 배치 라이브러리가 없다 —
- * CSS Grid로 `x/y/w/h`를 그대로 놓으면 어드민이 쓸 그리드와 기하가 같아진다.
- * (칸 폭 `1fr` × `GRID_COLS`, 행 높이 `GRID_ROW_HEIGHT`, 간격·바깥 여백 모두 `GRID_MARGIN`.)
+ * 저장된 배치대로 차트를 그린다. 격자는 어드민과 **같은 컴포넌트**라 칸 규격이
+ * 어긋날 수 없다(절대 원칙 1).
+ *
+ * 잠금이 풀리면 보는 사람이 카드를 옮기고 늘릴 수 있지만 그 배치는 **어디에도 남지
+ * 않는다** — 진실의 원천은 어드민이 저장한 대시보드이고, 여기에 캐시를 두면 어긋난
+ * 상태가 생긴다(절대 원칙 4).
  */
-export function DashboardGrid({ dashboard }: { dashboard: Dashboard }) {
+export function DashboardGrid({
+  dashboard,
+  layout,
+  onLayoutChange,
+  locked,
+}: {
+  dashboard: Dashboard
+  layout: Layout
+  onLayoutChange: (next: Layout) => void
+  locked: boolean
+}) {
   const byId = new Map(dashboard.datasets.map((dataset) => [dataset.id, dataset]))
+  // parseDashboard가 이미 막았지만, 타입을 좁히려면 한 번 걸러야 한다. 걸러진 채로
+  // 넘겨야 rgl이 자식 없는 자리를 만나지 않는다.
+  const cards = dashboard.charts.flatMap((chart) => {
+    const dataset = byId.get(chart.datasetId)
+    return dataset ? [{ chart, dataset }] : []
+  })
 
   return (
-    <div
-      className="grid"
-      style={{
-        gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))`,
-        gridAutoRows: `${GRID_ROW_HEIGHT}px`,
-        gap: `${GRID_MARGIN}px`,
-        padding: `${GRID_MARGIN}px`,
-      }}
-    >
-      {dashboard.charts.map((chart, index) => {
-        const dataset = byId.get(chart.datasetId)
-        // parseDashboard가 이미 막았지만, 타입을 좁히려면 여기서도 확인해야 한다.
-        if (!dataset) return null
-
-        return (
-          <div
-            key={chart.id}
-            // `grid`라서 안의 카드가 이 칸을 그대로 채운다. `h-full`을 쓰면 부모 높이가
-            // 해석되지 않는 자리에서 플롯이 콘텐츠 높이로 무너진다(CLAUDE.md).
-            className="grid min-w-0"
-            style={{
-              gridColumn: `${chart.layout.x + 1} / span ${chart.layout.w}`,
-              gridRow: `${chart.layout.y + 1} / span ${chart.layout.h}`,
-            }}
-          >
+    // 격자의 바깥 여백. 칸 사이 간격과 같은 값이라 카드가 가장자리에도 고르게 선다.
+    <div style={{ padding: `${GRID_MARGIN}px` }}>
+      <ChartGrid layout={layout} onLayoutChange={onLayoutChange} locked={locked}>
+        {cards.map(({ chart, dataset }, index) => (
+          // `grid`라 안의 카드가 rgl이 정해준 칸을 그대로 채운다. `h-full`을 쓰면
+          // 부모 높이가 해석되지 않는 자리에서 플롯이 콘텐츠 높이로 무너진다(CLAUDE.md).
+          <div key={chart.id} className="grid">
             <ChartCard
               spec={chart.spec}
               title={chart.title}
@@ -45,8 +49,8 @@ export function DashboardGrid({ dashboard }: { dashboard: Dashboard }) {
               columns={dataset.columns}
             />
           </div>
-        )
-      })}
+        ))}
+      </ChartGrid>
     </div>
   )
 }

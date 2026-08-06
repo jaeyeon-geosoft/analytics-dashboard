@@ -1,6 +1,6 @@
 # 진행 상황
 
-마지막 갱신: 2026-08-05
+마지막 갱신: 2026-08-06
 
 **이 문서는 "지금 참인 것"만 담는다.** 왜 그렇게 됐는지, 뭘 틀렸었는지, 실제로 잰
 숫자는 [docs/lessons.md](docs/lessons.md)에 있다. 규칙 자체는 [CLAUDE.md](CLAUDE.md)가
@@ -21,8 +21,8 @@
 
 어드민은 CSV/TSV와 Excel(`.xlsx`/`.xls`)을 **여러 개** 열고, 여러 시트와 헤더가 1행이
 아닌 파일도 지정해서 읽는다. 추론이 틀리면 사이드바에서 고칠 수 있고, 고치면 **그 파일을
-보는 모든 카드의** 매핑 후보와 차트가 따라 바뀐다. 뷰어는 설정 UI 없이 받아서 그리기만
-한다.
+보는 모든 카드의** 매핑 후보와 차트가 따라 바뀐다. 뷰어는 차트 설정 UI 없이 받아서
+그리기만 한다 — 배치만 잠금을 풀어 그 자리에서 바꿔볼 수 있고, 그 배치는 저장되지 않는다.
 
 **JSON은 API가 붙기 전까지의 임시 통로다.** 모양은 이미 최종형이라(→ [계약](#대시보드-계약))
 나중에 어드민의 `내보내기`가 `POST`로, 뷰어의 `loadDashboardFile()`이 `fetch`로
@@ -114,15 +114,25 @@
 - ⚠는 그 파일에 확인할 것이 있다는 표시다(행 상한·모양 다른 행·타입이 미심쩍은 컬럼).
   접혀 있어도 보이라고 둔 것이고, 세는 기준은 `columnWarning()` 한 곳이다.
 
-**뷰어** (`src/viewer/index.html` → `:5174`) — 설정 UI 없음
+**뷰어** (`src/viewer/index.html` → `:5174`) — 차트 설정 UI 없음
 
 ```
-┌─ header (h-14) ─────────────────────────────────────────┐
-│  대시보드 제목 / 차트 n장 · 파일명들   [열기] │ [테마]   │
-├─────────────────────────────────────────────────────────┤
-│  CSS Grid — 저장된 x/y/w/h 그대로 (스크롤은 여기가 맡음) │
-└─────────────────────────────────────────────────────────┘
+┌─ header (h-14) ──────────────────────────────────────────┐
+│  대시보드 제목 / 차트 n장 · 파일명들 [배치 바꾸기][열기]│[테마]│
+├─ (잠금이 풀린 동안만) ────────────────────────────────────┤
+│  옮긴 배치는 저장되지 않습니다…            [원래 배치로]  │
+├──────────────────────────────────────────────────────────┤
+│  저장된 x/y/w/h 그대로 — 어드민과 같은 격자              │
+│  (스크롤은 여기가 맡음)                                   │
+└──────────────────────────────────────────────────────────┘
 ```
+
+- **잠긴 채로 열린다.** 기본은 "설정한 그대로"다. `배치 바꾸기`를 누르면 카드를 끌어
+  옮기고 크기를 바꿀 수 있고, `배치 잠그기`로 다시 고정한다.
+- **옮긴 배치는 어디에도 저장하지 않는다** — 새로고침하면 저장된 배치로 돌아온다.
+  진실의 원천은 어드민이 저장한 대시보드이고, 로컬에 캐시를 두면 어긋난 상태가
+  생긴다(절대 원칙 4). 그래서 잠금이 풀린 동안 그 사실을 줄로 알린다.
+- 저장된 배치와 달라졌을 때만 `원래 배치로`가 나온다. 기준점은 언제나 받은 대시보드다.
 
 - **시트는 카드가 고른다. 파일 쪽이 아니다.** 시트가 다르면 컬럼도 행도 다른 **다른 표**라
   데이터셋이 따로다(`fileId`가 같고 `id`는 다르다). 파일 자리에서 바꾸면 같은 파일을 보던
@@ -144,17 +154,22 @@
 
 ### 배치
 
-**어드민은 `react-grid-layout`, 뷰어는 CSS Grid.** 뷰어는 끌지도 늘리지도 않으므로
-저장된 `x/y/w/h`를 그대로 놓으면 되고, **같은 상수를 쓰기 때문에 기하가 일치한다** —
-`GRID_COLS`(12) · `GRID_ROW_HEIGHT`(40px) · `GRID_MARGIN`(12px)는 `shared/lib/dashboard.ts`에
-있다. 한쪽만 바꾸면 같은 대시보드가 두 화면에서 다르게 배치된다.
+**양쪽 다 `react-grid-layout`을 같은 컴포넌트로 쓴다**(`shared/components/chart-grid.tsx`).
+뷰어에서도 카드를 옮길 수 있게 되면서 규격을 두 벌 둘 이유가 없어졌다 — 예전에는 뷰어만
+CSS Grid로 따로 그렸다. 칸 규격은 `shared/lib/dashboard.ts`에 있다:
+`GRID_COLS`(12) · `GRID_ROW_HEIGHT`(40px) · `GRID_MARGIN`(12px) · `GRID_MIN_W`(3) ·
+`GRID_MIN_H`(7). 한쪽만 바꾸면 같은 대시보드가 두 화면에서 다르게 배치된다.
 
 - 기본 칸: `w=6, h=8`(404px), 한 줄에 두 장.
 - 하한 `minW=3` · `minH=7`. 세로 하한은 눈대중이 아니라 **내용 높이에서 나온 수**다 —
   머리줄 ~55px + 플롯 `min-h-64`(256px) = 351px, 7칸 = 352px.
 - 세로 압축이 기본이라 카드를 아래로 끌어도 빈칸이 있으면 위로 당겨 올라온다.
   열 사이 이동과 크기 조절은 그대로 된다.
-- rgl 기본 CSS는 `src/admin/grid.css`가 덮어쓴다(빨간 자리표시, 겹쳐 그려지는 삼각형).
+- 잠기면(`locked`) 끌기·크기 조절이 함께 꺼지고 손잡이가 `display:none`이 된다.
+  뷰어만 잠금을 쓰고 어드민은 항상 풀려 있다.
+- rgl 기본 CSS는 `src/shared/grid.css`가 덮어쓴다(빨간 자리표시, 겹쳐 그려지는 삼각형).
+  **양쪽 `main.tsx`가 rgl·react-resizable CSS와 함께 불러온다** — 뷰어에서 빠지면
+  손잡이와 자리표시가 기본 모습으로 나온다.
 
 → [lessons: 배치](docs/lessons.md#배치)
 
@@ -176,7 +191,7 @@ eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `ro
 | `src/shared/lib/dataset.ts` | `DataFrame`(`columns`+`rows`) — 렌더러가 먹는 최소 형태. 어드민의 `ParsedFile`이 그대로 대입되고, 뷰어는 API 응답에서 이 모양만 만들면 된다 |
 | `src/admin/lib/canvas-state.ts` | 어드민 상태 모델 — `AdminDataset`(**표 하나** = 파일+시트: 원본 참조·파싱 결과·그 표의 컬럼, 같은 파일은 `fileId` 공유), `AdminChart`(`{spec, datasetId}`), `OpenState`(파일을 읽는 동안만), `datasetLabel()` |
 | `src/shared/lib/chart-spec.ts` | `ChartSpec`(종류·매핑·집계·기준선), `createChart()`·`duplicateChart()`, **명세를 고치는 규칙**(`withChartType`·`withColumns`·`withMapping`), 상한 `MAX_CHARTS` |
-| `src/admin/components/chart-canvas.tsx` | 캔버스 4개 상태 + `DatasetBar` + `ChartGrid`(rgl) |
+| `src/admin/components/chart-canvas.tsx` | 캔버스 4개 상태 + `DatasetBar` + `CanvasGrid`(카드↔배치 맞추기) |
 | `src/shared/components/chart-card.tsx` | 카드 한 장 — 계산 지연(`useDeferredPlot`), 차트↔표 토글, 카드 단위 경고 |
 | `src/admin/components/file-dropzone.tsx` | 드래그&드롭 + 파일 선택 |
 | `src/shared/components/theme-toggle.tsx` | 라이트/다크 (`localStorage`, 데이터 아님) |
@@ -192,10 +207,12 @@ eslint가 강제). **앱 둘은 dev 서버도 빌드도 따로다** — Vite `ro
 | `src/shared/lib/dashboard.ts` | **계약.** `Dashboard` 타입, `parseDashboard()` 검증기, 그리드 규격 상수 |
 | `src/admin/lib/export-dashboard.ts` | 지금 어드민 상태 → `Dashboard` → JSON 다운로드. 어느 카드도 안 보는 파일은 담지 않는다. **나중에 여기가 POST** |
 | `src/admin/lib/chart-layout.ts` | 새 카드의 기본 칸, 하한(`minW`/`minH`), 카드↔배치 맞추기(`syncLayout`) |
-| `src/admin/grid.css` | rgl 기본 CSS 덮어쓰기 (자리표시·크기 손잡이) |
-| `src/viewer/viewer-app.tsx` | 뷰어 화면 — 빈 상태 / 실패 이유 / 대시보드 |
+| `src/shared/grid.css` | rgl 기본 CSS 덮어쓰기 (자리표시·크기 손잡이). 양쪽 `main.tsx`가 불러온다 |
+| `src/shared/components/chart-grid.tsx` | 격자 — 칸 규격과 끌기 규칙. **양쪽이 쓴다**, 뷰어만 `locked` |
+| `src/viewer/viewer-app.tsx` | 뷰어 화면 — 빈 상태 / 실패 이유 / 대시보드. 지금 배치와 잠금을 든다 |
 | `src/viewer/load-dashboard.ts` | 대시보드를 가져오는 **유일한 자리**. **나중에 여기가 fetch** |
-| `src/viewer/components/dashboard-grid.tsx` | 저장된 배치를 CSS Grid로 그린다 |
+| `src/viewer/components/dashboard-grid.tsx` | 받은 대시보드를 격자에 올린다 |
+| `src/viewer/view-layout.ts` | 저장된 배치 → 격자 모양(`layoutFrom`), 달라졌는지(`isMoved`) |
 
 ## 대시보드 계약
 
