@@ -2,7 +2,7 @@
 // 타입 검사가 여기 채우기를 강제한다 — 따로 배열을 두면 조용히 어긋난다.
 import { MAPPING_SLOTS } from "@/shared/lib/mapping-slots"
 import { DASHBOARD_FORMAT } from "@/shared/lib/dashboard/constants"
-import { describe, fail, isLayout, isRecord } from "@/shared/lib/dashboard/guards"
+import { describe, fail, isLayout, isMapping, isRecord } from "@/shared/lib/dashboard/guards"
 import type { Dashboard, ParseResult } from "@/shared/lib/dashboard/types"
 
 /**
@@ -53,6 +53,11 @@ export function parseDashboard(input: unknown): ParseResult {
     // `in`은 프로토타입까지 훑어서 "toString"도 통과시킨다. hasOwn을 쓸 것.
     if (typeof c.spec.chartType !== "string" || !Object.hasOwn(MAPPING_SLOTS, c.spec.chartType)) {
       return fail(`${where}.spec.chartType이 아는 종류가 아닙니다: ${describe(c.spec.chartType)}`)
+    }
+    // 매핑은 슬롯마다 컬럼 이름 하나, `값`만 이름 배열이다. 모양이 어긋난 채로
+    // 넘기면 집계가 `undefined`를 컬럼 이름으로 읽어 빈 차트가 나온다.
+    if (c.spec.mapping !== undefined && !isMapping(c.spec.mapping)) {
+      return fail(`${where}.spec.mapping이 컬럼 이름(또는 이름 배열)의 객체가 아닙니다`)
     }
     if (!isLayout(c.layout)) return fail(`${where}.layout이 { x, y, w, h } 숫자가 아닙니다`)
   }

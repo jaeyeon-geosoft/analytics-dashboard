@@ -2,6 +2,7 @@ import type { ChartType } from "@/shared/lib/chart-types"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
 import {
   fillMapping,
+  pickedColumns,
   pruneMapping,
   type Mapping,
   type MappingKey,
@@ -37,10 +38,17 @@ export function withColumns(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec {
   return { ...spec, mapping: refit(spec.mapping, spec.chartType, columns) }
 }
 
-/** 슬롯 하나의 선택. `column`이 없으면 "없음"이라 키째 지운다. */
-export function withMapping(spec: ChartSpec, key: MappingKey, column?: string): ChartSpec {
+/**
+ * 슬롯 하나의 선택. 여럿 고르는 슬롯이면 목록째 받는다. 고른 것이 없으면 "없음"이라
+ * 키째 지운다 — 빈 배열을 남기면 "골랐는데 비어 있는" 상태가 생긴다.
+ */
+export function withMapping(
+  spec: ChartSpec,
+  key: MappingKey,
+  column?: string | string[]
+): ChartSpec {
   const mapping = { ...spec.mapping }
-  if (column) mapping[key] = column
-  else delete mapping[key]
+  if (pickedColumns(column).length === 0) delete mapping[key]
+  else Object.assign(mapping, { [key]: column })
   return { ...spec, mapping }
 }

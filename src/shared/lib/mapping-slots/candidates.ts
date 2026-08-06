@@ -1,6 +1,7 @@
 import type { ChartType } from "@/shared/lib/chart-types"
 import type { ColumnInfo } from "@/shared/lib/infer-types"
-import { MIN_INFORMATIVE_DISTINCT } from "@/shared/lib/mapping-slots/constants"
+import { MAX_SERIES, MIN_INFORMATIVE_DISTINCT } from "@/shared/lib/mapping-slots/constants"
+import { pickedColumns } from "@/shared/lib/mapping-slots/picked"
 import { MAPPING_SLOTS } from "@/shared/lib/mapping-slots/slots"
 import type { Mapping, MappingKey, MappingSlot } from "@/shared/lib/mapping-slots/types"
 
@@ -38,11 +39,27 @@ export function pruneMapping(
   const known = new Set(columns.map((column) => column.name))
   const pruned: Mapping = {}
 
-  for (const [key, selected] of Object.entries(mapping) as [MappingKey, string][]) {
-    if (!known.has(selected)) continue // 컬럼 자체가 사라졌다
+  for (const [key, selected] of Object.entries(mapping) as [
+    MappingKey,
+    string | string[] | undefined,
+  ][]) {
     const slot = MAPPING_SLOTS[chartType].find((candidate) => candidate.key === key)
-    if (slot && !candidatesFor(slot, columns).some((column) => column.name === selected)) continue
-    pruned[key] = selected
+    const allowed = slot && new Set(candidatesFor(slot, columns).map((column) => column.name))
+    // 컬럼 자체가 사라졌거나(`known`) 이 슬롯의 후보에서 빠졌으면 걷어낸다.
+    const kept = pickedColumns(selected).filter(
+      (column) => known.has(column) && (!allowed || allowed.has(column))
+    )
+    if (kept.length === 0) continue
+
+    /*
+      **모양은 건드리지 않는다.** 여기가 하는 일은 못 쓰게 된 선택을 걷어내는 것이지
+      지금 종류에 맞추는 것이 아니다 — 배열을 문자열로 눌러버리면 누적 막대에서 고른
+      층이 막대를 한 번 거쳐 돌아오는 것만으로 사라진다. 지금 종류에서 몇 개를 쓸지는
+      읽는 쪽(`activeMapping`)이 정한다.
+    */
+    Object.assign(pruned, {
+      [key]: Array.isArray(selected) ? kept.slice(0, MAX_SERIES) : kept[0],
+    })
   }
   return pruned
 }
@@ -61,10 +78,10 @@ export function fillMapping(
   const filled: Mapping = { ...mapping }
   // 지금 쓰이는 슬롯의 값만 "이미 쓴 컬럼"으로 본다. 잠자는 슬롯의 값까지 세면
   // 같은 컬럼을 다른 역할로 쓸 수 있는데도 막힌다.
-  const used = new Set(slots.map((slot) => filled[slot.key]).filter(Boolean) as string[])
+  const used = new Set(slots.flatMap((slot) => pickedColumns(filled[slot.key])))
 
   for (const slot of slots) {
-    if (slot.optional || filled[slot.key]) continue
+    if (slot.optional || pickedColumns(filled[slot.key]).length > 0) continue
     const free = candidatesFor(slot, columns).filter((column) => !used.has(column.name))
 
     // 값이 하나뿐이면 막대 하나짜리 차트고, 샘플에 값이 없었으면 대부분 빈 컬럼이다.
@@ -79,7 +96,9 @@ export function fillMapping(
     // 셋 다 비면 어쩔 수 없이 첫 후보. 아무것도 안 고르는 것보단 낫다.
     const preferred = pool[0] ?? informative[0] ?? free[0]
     if (preferred) {
-      filled[slot.key] = preferred.name
+      // 여럿 고르는 슬롯도 **하나만** 채운다. 묻지도 않았는데 층을 여러 겹 쌓으면
+      // 분할 슬롯을 자동으로 채우지 않는 것과 같은 이유로 놀란다.
+      Object.assign(filled, { [slot.key]: slot.multiple ? [preferred.name] : preferred.name })
       used.add(preferred.name)
     }
   }

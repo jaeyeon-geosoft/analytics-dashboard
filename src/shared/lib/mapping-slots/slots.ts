@@ -76,11 +76,22 @@ const POINT_SLOTS: MappingSlot[] = [
 export const MAPPING_SLOTS: Record<ChartType, MappingSlot[]> = {
   bar: [CATEGORY, VALUE, SERIES],
   hbar: [CATEGORY, VALUE, SERIES],
-  // 무엇으로 쌓을지가 없으면 그냥 막대라서 필수다.
+  /*
+    쌓을 것을 정하는 길이 둘이다. 어느 쪽이든 하나는 있어야 층이 생긴다.
+
+    - **값 컬럼을 여럿 고른다**(wide). 숫자 컬럼 하나하나가 층이고 컬럼 이름이 곧
+      층 이름이다. 엑셀에서 표를 통째로 잡아 누적 막대를 만드는 것이 이 방식이고,
+      분석가가 뽑아오는 요약표가 대개 이 모양이다.
+    - **누적 기준으로 가른다**(long). 층 이름이 범주 컬럼의 값으로 들어 있다.
+
+    둘은 함께 쓰지 않는다 — 켜지는 순간 시리즈가 컬럼 N개 × 범주 M개로 늘어 색이
+    모자란다(`Y축(우)`와 `분할`이 서로를 잠그는 것과 같은 이유다). 값이 여럿이면
+    누적 기준이 잠기고, 누적 기준이 켜져 있으면 값은 하나로 줄어든다.
+  */
   stacked: [
     CATEGORY,
-    VALUE,
-    { ...SERIES, label: "누적 기준", hint: "쌓아 올릴 기준", optional: false },
+    { ...VALUE, multiple: true, hint: "쌓아 올릴 숫자. 여럿 고르면 하나하나가 층이 된다" },
+    { ...SERIES, label: "누적 기준", hint: "한 컬럼 안의 값으로 층을 가를 때" },
   ],
   // 축이 둘이 될 수 있으므로 왼쪽도 이름에 자리를 밝힌다. 영역은 채움이 서로를 가려서
   // 오른쪽 축을 주지 않는다.

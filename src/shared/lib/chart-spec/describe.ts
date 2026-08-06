@@ -1,4 +1,10 @@
-import { MAPPING_SLOTS, activeMapping, rightValueColumn } from "@/shared/lib/mapping-slots"
+import {
+  MAPPING_SLOTS,
+  activeMapping,
+  pickedColumns,
+  rightValueColumn,
+  valueColumns,
+} from "@/shared/lib/mapping-slots"
 import type { ChartSpec } from "@/shared/lib/chart-spec/types"
 
 /** 매핑을 사람이 읽는 문장으로 푼 것. 카드 머리줄과 내보내기 제목이 같은 것을 본다. */
@@ -31,9 +37,11 @@ export function describeMapping(spec: ChartSpec): MappingDescription {
   */
   const mapping = activeMapping(spec.chartType, spec.mapping)
 
+  // 값 슬롯은 컬럼을 여럿 들 수 있다(누적 막대의 층). 한 칸 안에서 이어 붙이고
+  // 화살표는 축의 흐름에만 쓴다 — 층 셋이 `→`로 이어지면 그게 축인 줄 읽힌다.
   const axes = slots
     .filter((slot) => !ASIDE_KEYS.has(slot.key))
-    .map((slot) => mapping[slot.key])
+    .map((slot) => pickedColumns(mapping[slot.key]).join(" · "))
     .filter(Boolean)
     .join(" → ")
 
@@ -54,7 +62,7 @@ export function describeMapping(spec: ChartSpec): MappingDescription {
   return {
     axes,
     aside: aside.length > 0 ? aside.join(" · ") : undefined,
-    measure: mapping.value ?? mapping.y,
+    measure: valueColumns(mapping).join(" · ") || mapping.y,
     by: mapping.category ?? mapping.x,
   }
 }
