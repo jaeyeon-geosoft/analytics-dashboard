@@ -4,6 +4,7 @@ import { Button } from "@/shared/components/ui/button"
 import { Separator } from "@/shared/components/ui/separator"
 import { BrandMark } from "@/shared/components/brand-mark"
 import { ThemeToggle } from "@/shared/components/theme-toggle"
+import { LiveDashboardButton } from "@/viewer/components/live-dashboard-button"
 import { OpenDashboardButton } from "@/viewer/components/open-dashboard-button"
 import type { Dashboard } from "@/shared/lib/dashboard"
 
@@ -12,11 +13,15 @@ export function ViewerHeader({
   locked,
   onToggleLock,
   onFile,
+  onLive,
+  liveLoading,
 }: {
   dashboard: Dashboard | null
   locked: boolean
   onToggleLock: () => void
   onFile: (file: File) => void
+  onLive: () => void
+  liveLoading: boolean
 }) {
   const lockLabel = locked ? "배치 바꾸기" : "배치 잠그기"
 
@@ -51,6 +56,7 @@ export function ViewerHeader({
           <span className="hidden sm:inline">{lockLabel}</span>
         </Button>
       )}
+      <LiveDashboardButton onClick={onLive} loading={liveLoading} label="라이브 데이터 보기" />
       <OpenDashboardButton onFile={onFile} label={dashboard ? "다른 대시보드" : "대시보드 열기"} />
       <Separator orientation="vertical" className="h-6" />
       <ThemeToggle />

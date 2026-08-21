@@ -17,6 +17,8 @@ export default function ViewerApp() {
           locked={view.locked}
           onToggleLock={view.toggleLock}
           onFile={view.open}
+          onLive={view.openLive}
+          liveLoading={view.liveLoading}
         />
 
         {view.dashboard ? (
@@ -34,7 +36,12 @@ export default function ViewerApp() {
             </div>
           </>
         ) : (
-          <EmptyViewer problem={view.problem} onFile={view.open} />
+          <EmptyViewer
+            problem={view.problem}
+            onFile={view.open}
+            onLive={view.openLive}
+            liveLoading={view.liveLoading}
+          />
         )}
       </div>
     </TooltipProvider>
