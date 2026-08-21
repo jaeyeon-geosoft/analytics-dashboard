@@ -48,7 +48,7 @@ src/
 ├─ admin/    설정 화면 — components/{settings-sidebar/,chart-canvas/,chart-type-picker/,…}
 │            lib/{parse-file/,canvas-state/,export-dashboard/,chart-layout/,derive-column/,…}
 │            hooks/use-admin-workspace (상태 기계)
-└─ viewer/   보기 화면 — components/* · lib/{load-dashboard,layout-from,is-moved}
+└─ viewer/   보기 화면 — components/* · lib/{load-dashboard,layout-from,is-moved,kriso/}
              hooks/use-dashboard-view
 ```
 
@@ -76,10 +76,13 @@ src/
 - **차트: shadcn/ui Chart (Recharts 기반)** — 기존 shadcn 테마·CSS 변수와 맞물리기 때문에 선택. 렌더러는 `src/shared/components/chart-view/` 한 곳이고, Recharts에서 반복해서 걸리는 함정은 [docs/lessons.md](docs/lessons.md#recharts에서-걸린-것들)의 표에 모아뒀다.
 - **CSV/TSV 파서: papaparse** — `src/admin/lib/parse-file/`에서만 쓴다. 순수 파서라 네트워크 호출 없음.
 - **Excel 파서: SheetJS(`xlsx`)** — npm 레지스트리 버전은 `0.18.5`에서 멈췄고 알려진 취약점이 있어서, **벤더 CDN 타르볼로 고정**되어 있다(`package.json`의 URL). 빌드 시점 설치일 뿐 런타임 네트워크 호출은 없다. 버전을 올릴 때도 같은 방식으로.
+- **HTTP 클라이언트: axios + @tanstack/react-query** — 뷰어의 KRISO 라이브 API 모드
+  (`src/viewer/lib/kriso/`, [PROGRESS.md](PROGRESS.md#kriso-라이브-대시보드))에서만 쓴다.
+  어드민에는 필요 없어서 안 들였다 — 그 외 자리(대시보드 JSON 열기 등)는 여전히
+  `fetch` 하나로 버틴다.
 
 아직 도입 안 된 것 (필요해질 때 추가):
 - 상태관리 라이브러리 — 우선 React 내장(`useState`/`useReducer`/Context)으로 버티고, 정말 부족할 때만 논의
-- HTTP 클라이언트 — `fetch`로 버틴다
 - 응답 검증 라이브러리(zod 등) — 원칙 3을 손으로 쓰다가 아파지면 논의
 - 라우터 — 어드민/뷰어를 빌드 진입점으로 가르므로 지금은 필요 없다
 

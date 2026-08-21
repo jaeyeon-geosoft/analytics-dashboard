@@ -902,3 +902,65 @@ AIS_VDM_G… › Sheet_Rec…      LONG_SHEE… › 수신기_A_20…
   줬더니 4px만 떨어져 겹쳤다 — 트리거의 `pr-*`는 셰브론을 안쪽으로 밀 뿐이라 그만큼
   바깥에 버튼 자리가 생기는 게 아니다. `pr-10`(셰브론이 오른쪽 40~56px) + `right-3`
   (버튼이 12~28px)으로 계산해서 갈랐다.
+
+---
+
+## KRISO 라이브 API 연동
+
+뷰어에 "라이브 데이터 보기"(→ [PROGRESS: KRISO 라이브 대시보드](../PROGRESS.md#kriso-라이브-대시보드))를
+붙이면서 실제 API에 연결해보니 코드보다 **연결 자체**에서 두 개가 걸렸다. 둘 다
+"어디서 막히는지"를 좁히는 데 시간이 들었고, 결론이 한 번 뒤집혔다.
+
+### curl로는 CORS가 열렸는지 확인할 수 없다
+
+API를 붙이자마자 axios가 전부 "Network Error"를 냈다. curl로는 계속 200이 나와서
+"서버는 멀쩡한데 우리 코드가 이상한가" 하고 한참 우리 쪽을 의심했다.
+
+**CORS는 브라우저만 지키는 규칙이다.** 서버는 `Access-Control-Allow-Origin` 헤더를
+붙이든 안 붙이든 요청받은 그대로 200과 데이터를 돌려준다 — curl은 그 헤더를 아예 안
+보므로 있으나 없으나 성공한다. 브라우저만 그 헤더가 없으면 응답을 받아놓고도 JS에
+안 넘기고 버린 뒤 `TypeError: Failed to fetch`(axios는 `Network Error`)로만 알린다.
+**서버가 CORS를 열었는지는 반드시 실제 브라우저에서 `fetch()`해보거나, 응답 헤더에
+`Access-Control-Allow-Origin`이 찍히는지로 확인해야 한다** — curl 성공은 아무 증거가
+못 된다.
+
+진단이 한 번에 안 끝난 이유도 여기 있었다. 백엔드가 "고쳤다"고 세 번 답했는데 실제로는:
+1. `Access-Control-Allow-Credentials: true`만 있고 `Access-Control-Allow-Origin`이 아예
+   없음 (미들웨어 절반만 설정)
+2. 미들웨어는 붙었지만(`Access-Control-Allow-Methods`, `Vary: Origin`이 preflight
+   응답에 찍힘) 요청한 origin이 허용 목록에 없어 preflight가 400
+3. 세 번째 시도에서 실제로 `allow_origins`에 3개 origin이 들어가 `curl -X OPTIONS`로
+   확인됨
+
+**preflight(OPTIONS) 응답에 `Access-Control-Allow-Methods`가 찍히는 것과, 실제로 그
+origin이 허용된 것은 다른 상태다.** 전자는 미들웨어가 켜져 있다는 증거일 뿐이고, 후자를
+보려면 그 origin으로 보낸 요청의 응답에 `Access-Control-Allow-Origin`이 있는지 직접
+봐야 한다.
+
+### ngrok 무료 티어는 헤더 없는 XHR/fetch에 503을 준다
+
+CORS가 실제로 열린 뒤에도 브라우저 `fetch`는 여전히 실패했다 — 이번엔 CORS 에러가
+아니라 진짜 **503**이 찍혔다(curl은 여전히 200). ngrok 무료 티어는 브라우저가 보낸
+것으로 보이는 요청에 경고 인터스티셜을 끼워 넣는데, **일반 페이지 이동(top-level
+navigation)에는 그 HTML을 200으로 주지만, XHR/fetch처럼 인터스티셜을 보여줄 수 없는
+요청에는 503으로 막는다.** `ngrok-skip-browser-warning` 헤더를 요청에 실으면 정상
+JSON이 온다(`src/viewer/lib/kriso/build-live-dashboard.ts`의 `NGROK_HEADERS`).
+
+**틀렸던 결론:** 처음엔 "9개를 동시에 보내면 503이 난다"고 판단해 순차 요청(`for`
+루프)으로 코드를 고쳤다 — 9개를 병렬로 보낸 첫 시도가 전부 503이었고, curl로 하나씩
+보내면 됐기 때문이다. 그런데 이 관찰은 **CORS도 같이 깨져 있던 시점**에 한 것이었다.
+CORS와 ngrok 헤더를 모두 고친 뒤 다시 재보니 **9개 병렬 요청도 전부 200**이었다 —
+동시성은 원인이 아니었다. 코드는 `Promise.all` 병렬 요청으로 되돌렸다. 두 문제(CORS,
+ngrok 헤더)가 겹쳐 있을 때 증상만 보고 원인을 하나로 좁히면 이렇게 틀린다 — **변수를
+하나씩 고정하고 재현해야** 어느 것이 진짜 원인인지 갈린다.
+
+### 차트 종류를 데이터로 추론하지 않기로 했다
+
+처음엔 `_X` 컬럼의 타입(날짜/범주)과 `_Y` 개수로 line/bar/stacked를 자동으로 정하려
+했다 — 실제로 9개 테이블 전부 이 규칙(단일 Y + 날짜 → line, 단일 Y + 범주 → bar, Y가
+여럿 → stacked)에 맞아떨어지기도 했다. 그런데 사용자가 "차트 모양은 내가 하나씩
+정한다"고 분명히 정정했다 — 값의 생김새만으로 "무엇을 보여줄지"를 코드가 결정하면,
+데이터 모양이 우연히 규칙에 들어맞지 않는 테이블이 생겼을 때 조용히 잘못된 차트가
+나온다. **지금은 `tables.ts`에 테이블마다 차트 종류를 하드코딩**하고, 코드는 그
+안에서 `_X`/`_Y*` 접미사로 어느 컬럼을 어느 슬롯에 꽂을지만 정한다. 이 결정이 바뀌면
+`tables.ts` 한 곳만 보면 된다.
