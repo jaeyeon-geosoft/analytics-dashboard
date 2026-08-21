@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { Layout } from "react-grid-layout"
 
 import type { Dashboard } from "@/shared/lib/dashboard"
+import { useLiveDashboard } from "@/viewer/lib/kriso"
 import { isMoved } from "@/viewer/lib/is-moved"
 import { layoutFrom } from "@/viewer/lib/layout-from"
 import { loadDashboardFile } from "@/viewer/lib/load-dashboard"
@@ -20,9 +21,9 @@ export function useDashboardView() {
   const [layout, setLayout] = useState<Layout>([])
   /** 뷰어는 잠긴 채로 열린다 — 기본은 "설정한 그대로"다(절대 원칙 1). */
   const [locked, setLocked] = useState(true)
+  const live = useLiveDashboard()
 
-  async function open(file: File) {
-    const result = await loadDashboardFile(file)
+  function apply(result: Awaited<ReturnType<typeof loadDashboardFile>>) {
     if (result.ok) {
       setDashboard(result.dashboard)
       setLayout(layoutFrom(result.dashboard))
@@ -35,6 +36,16 @@ export function useDashboardView() {
     }
   }
 
+  async function open(file: File) {
+    apply(await loadDashboardFile(file))
+  }
+
+  /** KRISO API의 9개 테이블을 받아 그린다. 새로고침하면 다시 받아온다 — 로컬에
+   * 캐시하지 않는다(절대 원칙 4). */
+  async function openLive() {
+    apply(await live.load())
+  }
+
   return {
     dashboard,
     problem,
@@ -45,5 +56,7 @@ export function useDashboardView() {
     moved: dashboard ? isMoved(layout, dashboard) : false,
     resetLayout: () => dashboard && setLayout(layoutFrom(dashboard)),
     open,
+    openLive,
+    liveLoading: live.loading,
   }
 }
